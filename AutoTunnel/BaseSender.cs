@@ -10,13 +10,13 @@ namespace Force.AutoTunnel
 
 		private bool _isExiting;
 
-		public readonly string DstAddr;
+		public readonly IPAddress DstAddr;
 
 		public DateTime LastActivity { get; private set; }
 
 		private readonly TunnelStorage _storage;
 
-		protected BaseSender(string dstAddr, TunnelStorage storage)
+		protected BaseSender(IPAddress dstAddr, TunnelStorage storage)
 		{
 			_storage = storage;
 			DstAddr = dstAddr;
@@ -28,7 +28,7 @@ namespace Force.AutoTunnel
 
 		protected abstract void Send(byte[] packet, int packetLen);
 
-		protected void UpdateLastActivity()
+		public void UpdateLastActivity()
 		{
 			LastActivity = DateTime.UtcNow;
 		}

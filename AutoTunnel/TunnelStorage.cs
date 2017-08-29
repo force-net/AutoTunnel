@@ -12,7 +12,9 @@ namespace Force.AutoTunnel
 	{
 		private readonly ConcurrentDictionary<ulong, BaseSender> _clients = new ConcurrentDictionary<ulong, BaseSender>();
 
-		public readonly HashSet<string> OutgoingConnectionAdresses = new HashSet<string>();
+		public readonly HashSet<IPAddress> OutgoingConnectionAdresses = new HashSet<IPAddress>();
+
+		private readonly List<ClientSender> _clientSenders = new List<ClientSender>();
 
 		public BaseSender GetOrAddSender(IPEndPoint remoteHost, Func<BaseSender> creatorFunc)
 		{
@@ -42,11 +44,13 @@ namespace Force.AutoTunnel
 			return false;
 		}
 
-		public void RemoveOldSenders(TimeSpan killTime)
+		public IPEndPoint[] GetOldSenders(TimeSpan killTime)
 		{
 			var dt = DateTime.UtcNow;
-			var toRemove = (from client in _clients where client.Value is ReplySender && dt.Subtract(client.Value.LastActivity) >= killTime select client.Key).ToList();
-			toRemove.ForEach(x => Remove(x));
+			var toRemove = (from client in _clients where client.Value is ReplySender && dt.Subtract(client.Value.LastActivity) >= killTime select client.Key)
+				.Select(x => new IPEndPoint((long)(x >> 16), (int)(x & 0xffff)))
+				.ToArray();
+			return toRemove;
 		}
 
 		private readonly ConcurrentDictionary<ulong, byte[]> _sessionKeys = new ConcurrentDictionary<ulong, byte[]>();
@@ -76,12 +80,23 @@ namespace Force.AutoTunnel
 
 		private static ulong GetHostKey(IPEndPoint endpoint)
 		{
+#pragma warning disable 612,618
 			return ((ulong)endpoint.Address.Address << 16) | (uint)endpoint.Port;
+#pragma warning restore 612,618
 		}
 
 		public bool HasSession(ulong key)
 		{
 			return _sessionKeys.ContainsKey(key);
+		}
+
+		public void AddClientSender(ClientSender sender)
+		{
+			// adding fake tunnel info
+			SetNewEndPoint(new byte[16], sender.RemoteEP);
+			OutgoingConnectionAdresses.Add(sender.DstAddr);
+
+			_clientSenders.Add(sender);
 		}
 	}
 }

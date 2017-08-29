@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -13,19 +12,20 @@ namespace Force.AutoTunnel
 	{
 		private readonly TunnelStorage _storage;
 
-		private readonly byte[] _serverKey;
+		private readonly byte[][] _serverKeys;
 
 		private readonly PacketWriter _packetWriter;
 
-		public Listener(TunnelStorage storage, byte[] serverKey)
+		public Listener(TunnelStorage storage, byte[][] serverKeys)
 		{
 			_storage = storage;
-			_serverKey = serverKey;
+			_serverKeys = serverKeys;
 			_packetWriter = new PacketWriter();
 		}
 
 		public void Start()
 		{
+			Console.WriteLine("Started listening for incoming connections");
 			Task.Factory.StartNew(StartInternal);
 			Task.Factory.StartNew(CleanupThread);
 		}
@@ -34,7 +34,13 @@ namespace Force.AutoTunnel
 		{
 			while (true)
 			{
-				_storage.RemoveOldSenders(TimeSpan.FromMinutes(10));
+				var oldSenders = _storage.GetOldSenders(TimeSpan.FromMinutes(10));
+				foreach (var os in oldSenders)
+				{
+					Console.WriteLine("Removing idle session " + os.Address + ":" + os.Port);
+					_storage.Remove(os);
+				}
+
 				Thread.Sleep(10 * 60 * 1000);
 			}
 		}
@@ -46,7 +52,6 @@ namespace Force.AutoTunnel
 			{
 				s.Bind(new IPEndPoint(IPAddress.Any, 12017));
 				byte[] inBuf = new byte[65536];
-				byte[] decBuf = null;
 				EndPoint ep1 = new IPEndPoint(IPAddress.Any, 0);
 				while (true)
 				{
@@ -56,17 +61,37 @@ namespace Force.AutoTunnel
 						IPEndPoint ep = (IPEndPoint)ep1;
 
 						if (cnt == 0) continue;
+						byte[] decBuf = null;
 						if (cnt % 16 != 0)
 						{
 							if (inBuf[0] == 1)
 							{
 								Console.WriteLine("Estabilishing connection from " + ep.Address + ":" + ep.Port);
-								var decryptHelper = new DecryptHelper(_serverKey);
-								var dataLen = decryptHelper.Decrypt(inBuf, 4);
+								int dataLen = -1;
+								DecryptHelper decryptHelper = null;
+								EncryptHelper encryptHelper = null;
+								foreach (var serverKey in _serverKeys)
+								{
+									decryptHelper = new DecryptHelper(serverKey);
+									dataLen = decryptHelper.Decrypt(inBuf, 4);
+									if (dataLen > 0)
+									{
+										encryptHelper = new EncryptHelper(serverKey);
+										break;
+									}
+								}
+
+								// data is invalid, do not reply
+								if (dataLen < 0)
+								{
+									Console.WriteLine("Invalid data from " + ep.Address + ":" + ep.Port);
+									continue;
+								}
+								
 								var serverHandshake = new ServerHandshake();
 								var outPacket = serverHandshake.GetOutPacket(decryptHelper.InnerBuf, dataLen);
 								_storage.SetNewEndPoint(serverHandshake.SessionKey, ep);
-								var encryptHelper = new EncryptHelper(_serverKey);
+								
 								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
 								var initBuf = new byte[outLen + 4];
 								Buffer.BlockCopy(encryptHelper.InnerBuf, 0, initBuf, 4, outLen);
@@ -112,19 +137,22 @@ namespace Force.AutoTunnel
 							cnt = len;
 						}
 
-						var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
+						// var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
+						var sourceIp = new IPAddress(decBuf[12] | (decBuf[13] << 8) | (decBuf[14] << 16) | (decBuf[15] << 24));
 						// if we already has option to estabilish connection to this ip, do not add additional sender
 						if (!_storage.OutgoingConnectionAdresses.Contains(sourceIp))
 						{
 							var sender = _storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+							sender.UpdateLastActivity();
 
 							// ip was changed for client
-							if (sender.DstAddr != sourceIp)
+							if (!sender.DstAddr.Equals(sourceIp))
 							{
 								Console.WriteLine("Remote endpoint " + ep.Address + ":" + ep.Port + " has changed ip: " + sender.DstAddr + "->" + sourceIp);
+								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								sender.Dispose();
 								_storage.Remove(ep);
-								_storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+								// _storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
 							}
 						}
 

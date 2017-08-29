@@ -1,6 +1,12 @@
 ﻿using System;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
+
+using Force.AutoTunnel.Config;
+
+using Newtonsoft.Json;
 
 namespace Force.AutoTunnel
 {
@@ -8,7 +14,26 @@ namespace Force.AutoTunnel
 	{
 		public static void Main(string[] args)
 		{
-			var serverKey = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8 };
+			var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+			if (!File.Exists(configPath))
+			{
+				Console.Error.WriteLine("Missing config file");
+				return;
+			}
+
+			MainConfig config;
+
+			try
+			{
+				config = new JsonSerializer().Deserialize<MainConfig>(new JsonTextReader(new StreamReader(File.OpenRead(configPath))));
+			}
+			catch (Exception ex)
+			{
+				Console.Error.WriteLine("Error in parsing config: " + ex.Message);
+				return;
+			}
+
+			var serverKeys = (config.Keys ?? new string[0]).Select(PasswordHelper.GenerateKey).ToArray();
 			if (!NativeHelper.IsNativeAvailable)
 			{
 				Console.Error.WriteLine("Cannot load WinDivert library");
@@ -16,19 +41,20 @@ namespace Force.AutoTunnel
 			}
 
 			var ts = new TunnelStorage();
-			var l = new Listener(ts, serverKey);
-			l.Start();
 
-			var targetIp = args.Length > 0 ? args[0] : null;
-
-			if (targetIp != null)
+			if (config.EnableListening)
 			{
-				var endpoint = new IPEndPoint(IPAddress.Parse(targetIp), 12017);
-				// adding fake tunnel info
-				ts.SetNewEndPoint(new byte[16], endpoint);
-				ts.OutgoingConnectionAdresses.Add(targetIp);
-				var sender = new ClientSender(targetIp, endpoint, serverKey, ts);
-				// var sender = ts.GetOrAddSender(targetIp, () => new ClientSender(targetIp, endpoint, serverKey));
+				if (config.AddFirewallRule)
+					FirewallHelper.AddOpenFirewallRule("12017");
+
+				var l = new Listener(ts, serverKeys);
+				l.Start();
+			}
+
+			foreach (var rs in config.RemoteServers ?? new RemoteServerConfig[0])
+			{
+				var endpoint = new IPEndPoint(IPAddress.Parse(rs.Address), 12017);
+				ts.AddClientSender(new ClientSender(endpoint.Address, endpoint, PasswordHelper.GenerateKey(rs.Key), ts));
 			}
 
 			Thread.Sleep(-1);

@@ -23,14 +23,14 @@ namespace Force.AutoTunnel
 		{
 			var rsa = new RSACryptoServiceProvider();
 			rsa.FromXmlString(publicRsaKey);
-			return rsa.Encrypt(data, true);
+			return rsa.Encrypt(data, false);
 		}
 
 		public static byte[] Decrypt(string privateRsaKey, byte[] data)
 		{
 			var rsa = new RSACryptoServiceProvider();
 			rsa.FromXmlString(privateRsaKey);
-			return rsa.Decrypt(data, true);
+			return rsa.Decrypt(data, false);
 		}
 	}
 }
