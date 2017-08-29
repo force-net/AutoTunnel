@@ -1,0 +1,6 @@
+﻿{
+	"keys": ["key1"],
+	"remoteServers": [
+		{ "address": "192.168.16.8", "key": "key1", keepAlive: true, connectOnStart: true }
+	]
+}

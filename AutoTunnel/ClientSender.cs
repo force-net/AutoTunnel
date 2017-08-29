@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -27,10 +26,13 @@ namespace Force.AutoTunnel
 
 		private bool _isInited;
 
-		public ClientSender(string dstAddr, IPEndPoint remoteEP, byte[] serverKey, TunnelStorage storage)
+		public readonly IPEndPoint RemoteEP;
+
+		public ClientSender(IPAddress dstAddr, IPEndPoint remoteEP, byte[] serverKey, TunnelStorage storage)
 			: base(dstAddr, storage)
 		{
 			Console.WriteLine("Tunnel watcher was created for " + dstAddr);
+			RemoteEP = remoteEP;
 			_packetWriter = new PacketWriter();
 			_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 			_socket.Connect(remoteEP);

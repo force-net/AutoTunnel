@@ -43,6 +43,10 @@
     <AssemblyOriginatorKeyFile>..\force.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=9.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.9.0.1\lib\net40\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -51,7 +55,13 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Compile Include="ClientSender.cs" />
+    <Compile Include="Config\RemoteServerConfig.cs" />
+    <Compile Include="Config\ListeningConfig.cs" />
+    <Compile Include="Config\MainConfig.cs" />
     <Compile Include="PacketWriter.cs" />
     <Compile Include="Encryption\ClientHandshake.cs" />
     <Compile Include="Encryption\DecryptHelper.cs" />
@@ -73,6 +83,7 @@
     <None Include="..\force.snk">
       <Link>force.snk</Link>
     </None>
+    <None Include="packages.config" />
     <None Include="x86\WinDivert.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

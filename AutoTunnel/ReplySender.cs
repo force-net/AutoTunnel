@@ -14,7 +14,7 @@ namespace Force.AutoTunnel
 
 		private readonly IPEndPoint _remoteEP;
 
-		public ReplySender(string dstAddr, Socket socket, IPEndPoint remoteEP, TunnelStorage storage)
+		public ReplySender(IPAddress dstAddr, Socket socket, IPEndPoint remoteEP, TunnelStorage storage)
 			: base(dstAddr, storage)
 		{
 			Console.WriteLine("Tunnel watcher was created for " + dstAddr);
