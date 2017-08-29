@@ -15,10 +15,13 @@ namespace Force.AutoTunnel
 
 		private readonly byte[] _serverKey;
 
+		private readonly PacketWriter _packetWriter;
+
 		public Listener(TunnelStorage storage, byte[] serverKey)
 		{
 			_storage = storage;
 			_serverKey = serverKey;
+			_packetWriter = new PacketWriter();
 		}
 
 		public void Start()
@@ -44,45 +47,64 @@ namespace Force.AutoTunnel
 				s.Bind(new IPEndPoint(IPAddress.Any, 12017));
 				byte[] inBuf = new byte[65536];
 				byte[] decBuf = null;
-				EndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+				EndPoint ep1 = new IPEndPoint(IPAddress.Any, 0);
 				while (true)
 				{
 					try
 					{
-						int cnt = s.ReceiveFrom(inBuf, ref ep);
-						int sessionId = 0;
+						int cnt = s.ReceiveFrom(inBuf, ref ep1);
+						IPEndPoint ep = (IPEndPoint)ep1;
+
 						if (cnt == 0) continue;
-						if (inBuf[0] == 1)
+						if (cnt % 16 != 0)
 						{
-							var decryptHelper = new DecryptHelper(_serverKey);
-							var dataLen = decryptHelper.Decrypt(inBuf);
-							var serverHandshake = new ServerHandshake();
-							var outPacket = serverHandshake.GetOutPacket(decryptHelper.InnerBuf, dataLen);
-							var encryptHelper = new EncryptHelper(_serverKey);
-							var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
-							var toSend = encryptHelper.InnerBuf;
-							sessionId = _storage.GetNewSessionId(serverHandshake.SessionKey);
-							toSend[0] = 0x2;
-							toSend[1] = (byte)sessionId;
-							toSend[2] = (byte)(sessionId >> 8);
-							toSend[3] = (byte)(sessionId >> 16);
-							s.SendTo(toSend, outLen, SocketFlags.None, ep);
-							continue;
-						}
-						else
-						{
-							sessionId = inBuf[1] | (inBuf[2] << 8) | (inBuf[3] << 16);
-							var decryptor = _storage.GetSessionDecryptor(sessionId);
-							if (decryptor == null)
+							if (inBuf[0] == 1)
 							{
-								s.SendTo(new byte[] { 0x3, inBuf[1], inBuf[2], inBuf[3] }, 4, SocketFlags.None, ep);
+								Console.WriteLine("Estabilishing connection from " + ep.Address + ":" + ep.Port);
+								var decryptHelper = new DecryptHelper(_serverKey);
+								var dataLen = decryptHelper.Decrypt(inBuf, 4);
+								var serverHandshake = new ServerHandshake();
+								var outPacket = serverHandshake.GetOutPacket(decryptHelper.InnerBuf, dataLen);
+								_storage.SetNewEndPoint(serverHandshake.SessionKey, ep);
+								var encryptHelper = new EncryptHelper(_serverKey);
+								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
+								var initBuf = new byte[outLen + 4];
+								Buffer.BlockCopy(encryptHelper.InnerBuf, 0, initBuf, 4, outLen);
+								initBuf[0] = 2;
+								initBuf[1] = 1; // version
+
+								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
+								Console.WriteLine("Estabilished connection from " + ep.Address + ":" + ep.Port);
 								continue;
 							}
 
-							var len = decryptor.Decrypt(inBuf);
+							if (inBuf[0] == 0x5) // ping
+							{
+								continue;
+							}
+							else
+							{
+								// error
+								Console.WriteLine("Unsupported data from " + ep.Address + ":" + ep.Port);
+								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								continue;
+							}
+						}
+						else
+						{
+							var decryptor = _storage.GetSessionDecryptor(ep);
+							if (decryptor == null)
+							{
+								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								Console.WriteLine("Missing decryptor for " + ep.Address + ":" + ep.Port);
+								continue;
+							}
+
+							var len = decryptor.Decrypt(inBuf, 0);
 							if (len < 0)
 							{
-								s.SendTo(new byte[] { 0x3, inBuf[1], inBuf[2], inBuf[3] }, 4, SocketFlags.None, ep);
+								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								Console.WriteLine("Unable to decrypt data from " + ep.Address + ":" + ep.Port);
 								continue;
 							}
 
@@ -91,21 +113,22 @@ namespace Force.AutoTunnel
 						}
 
 						var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
-
-						// 			_sender = new BaseSender(DstAddr, this);
-						// _sender.Start(remoteEp);
-
-						var sender = _storage.GetOrAdd(sourceIp, () => new ReplySender(sourceIp, s, (IPEndPoint)ep, sessionId, _storage.GetSessionKey(sessionId)));
-						// ip was changed, sending error and waiting for reconnect
-						if (!sender.RemoteEP.Equals(ep))
+						// if we already has option to estabilish connection to this ip, do not add additional sender
+						if (!_storage.OutgoingConnectionAdresses.Contains(sourceIp))
 						{
-							sender.Dispose();
-							_storage.Remove(sourceIp);
-							s.SendTo(new byte[] { 0x3, inBuf[1], inBuf[2], inBuf[3] }, 4, SocketFlags.None, ep);
-							continue;
+							var sender = _storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+
+							// ip was changed for client
+							if (sender.DstAddr != sourceIp)
+							{
+								Console.WriteLine("Remote endpoint " + ep.Address + ":" + ep.Port + " has changed ip: " + sender.DstAddr + "->" + sourceIp);
+								sender.Dispose();
+								_storage.Remove(ep);
+								_storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+							}
 						}
 
-						sender.OnReceive(decBuf, cnt);
+						_packetWriter.Write(decBuf, cnt);
 					}
 					catch (Exception ex)
 					{

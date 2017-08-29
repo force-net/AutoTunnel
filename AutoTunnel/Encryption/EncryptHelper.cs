@@ -51,9 +51,9 @@ namespace Force.AutoTunnel.Encryption
 			_headerBuf[6] = (byte)'A';
 			_headerBuf[7] = (byte)'T';
 
-			encryptor.TransformBlock(_headerBuf, 0, 16, _innerBuf, 0 + 4);
+			encryptor.TransformBlock(_headerBuf, 0, 16, _innerBuf, 0);
 			if (len == 0) return 16 + 4;
-			return encryptor.TransformBlock(data, 0, (len + 15) & ~15, _innerBuf, 16 + 4) + 16 + 4;
+			return encryptor.TransformBlock(data, 0, (len + 15) & ~15, _innerBuf, 16) + 16;
 		}
 	}
 }

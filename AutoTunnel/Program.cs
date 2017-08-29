@@ -24,7 +24,11 @@ namespace Force.AutoTunnel
 			if (targetIp != null)
 			{
 				var endpoint = new IPEndPoint(IPAddress.Parse(targetIp), 12017);
-				var sender = ts.GetOrAdd(targetIp, () => new ClientSender(targetIp, endpoint, serverKey));
+				// adding fake tunnel info
+				ts.SetNewEndPoint(new byte[16], endpoint);
+				ts.OutgoingConnectionAdresses.Add(targetIp);
+				var sender = new ClientSender(targetIp, endpoint, serverKey, ts);
+				// var sender = ts.GetOrAddSender(targetIp, () => new ClientSender(targetIp, endpoint, serverKey));
 			}
 
 			Thread.Sleep(-1);

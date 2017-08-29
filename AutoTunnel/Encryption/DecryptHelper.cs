@@ -23,7 +23,7 @@ namespace Force.AutoTunnel.Encryption
 			_key = key;
 		}
 
-		public int Decrypt(byte[] data)
+		public int Decrypt(byte[] data, int offset)
 		{
 			var aes = Aes.Create();
 			aes.Key = _key;
@@ -31,12 +31,12 @@ namespace Force.AutoTunnel.Encryption
 			aes.Mode = CipherMode.CBC;
 			aes.Padding = PaddingMode.None;
 			var decryptor = aes.CreateDecryptor();
-			decryptor.TransformBlock(data, 4, 16, _headerBuf, 0);
+			decryptor.TransformBlock(data, offset, 16, _headerBuf, 0);
 			var len = _headerBuf[0] | (_headerBuf[1] << 8) | (_headerBuf[2] << 16) | (_headerBuf[3] << 24);
 			if (len > data.Length) return -1;
 			if (_headerBuf[4] != 1 && _headerBuf[5] != 0 && _headerBuf[6] != 'A' && _headerBuf[7] != 'T') return -1;
 			var len16 = (len + 15) & ~15;
-			decryptor.TransformBlock(data, 4 + 16, len16, _innerBuf, 0);
+			decryptor.TransformBlock(data, offset + 16, len16, _innerBuf, 0);
 			return len;
 		}
 	}

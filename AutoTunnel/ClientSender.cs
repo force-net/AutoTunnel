@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -10,7 +11,7 @@ namespace Force.AutoTunnel
 {
 	public class ClientSender : BaseSender
 	{
-		private Socket _socket;
+		private readonly Socket _socket;
 
 		private bool _disposed;
 
@@ -18,47 +19,99 @@ namespace Force.AutoTunnel
 
 		private DecryptHelper _decryptHelper;
 
-		private static int _sessionId;
-
-		private int _currentSessionId;
-
 		private readonly byte[] _serverKey;
 
-		private ManualResetEvent _initingEvent = new ManualResetEvent(true);
+		private readonly ManualResetEvent _initingEvent = new ManualResetEvent(false);
 
-		public ClientSender(string dstAddr, IPEndPoint remoteEP, byte[] serverKey)
-			: base(dstAddr, remoteEP)
+		private readonly PacketWriter _packetWriter;
+
+		private bool _isInited;
+
+		public ClientSender(string dstAddr, IPEndPoint remoteEP, byte[] serverKey, TunnelStorage storage)
+			: base(dstAddr, storage)
 		{
+			Console.WriteLine("Tunnel watcher was created for " + dstAddr);
+			_packetWriter = new PacketWriter();
 			_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 			_socket.Connect(remoteEP);
 
 			_serverKey = serverKey;
-			Init();
 
 			Task.Factory.StartNew(ReceiveCycle);
 			// Task.Factory.StartNew(PingCycle);
 		}
 
+		private int _isIniting;
+
 		private void Init()
 		{
-			_initingEvent.Reset();
-			_currentSessionId = Interlocked.Increment(ref _sessionId);
+			if (_isIniting == 1)
+				return;
+			Task.Factory.StartNew(InitInternal);
+		}
 
-			var cs = new ClientHandshake();
-			var sendingPacketLen = cs.GetPacketForSending();
-			_encryptHelper = new EncryptHelper(_serverKey);
-			_decryptHelper = new DecryptHelper(_serverKey);
+		private void InitInternal()
+		{
+			if (Interlocked.CompareExchange(ref _isIniting, 1, 0) == 1)
+				return;
+			try
+			{
+				_initingEvent.Reset();
 
-			Console.WriteLine("Initializing connection to " + DstAddr);
-			SendEncryptedCommand(1, cs.SendingPacket, sendingPacketLen);
-			_socket.Receive(_receiveBuffer);
-			var decLen = _decryptHelper.Decrypt(_receiveBuffer);
-			var sessionKey = cs.GetPacketFromServer(_decryptHelper.InnerBuf, decLen);
-			_encryptHelper = new EncryptHelper(sessionKey);
-			_decryptHelper = new DecryptHelper(sessionKey);
-			_currentSessionId = _receiveBuffer[1] | (_receiveBuffer[2] << 8) | (_receiveBuffer[3] << 16);
-			Console.WriteLine("Initialized connection to " + DstAddr + ", SessionId: " + _sessionId);
-			_initingEvent.Set();
+				var cs = new ClientHandshake();
+				var sendingPacketLen = cs.GetPacketForSending();
+				_encryptHelper = new EncryptHelper(_serverKey);
+				_decryptHelper = new DecryptHelper(_serverKey);
+
+				Console.WriteLine("Initializing connection to " + DstAddr);
+
+				var lenToSend = _encryptHelper.Encrypt(cs.SendingPacket, sendingPacketLen);
+				var packetToSend = _encryptHelper.InnerBuf;
+				var initBuf = new byte[lenToSend + 4];
+				Buffer.BlockCopy(packetToSend, 0, initBuf, 4, lenToSend);
+				initBuf[0] = 1;
+				initBuf[1] = 1; // version
+				var recLength = 0;
+
+				Task task = null;
+				while (true)
+				{
+					_socket.Send(initBuf, initBuf.Length, SocketFlags.None);
+					task = task ?? Task.Factory.StartNew(() => recLength = _socket.Receive(_receiveBuffer));
+					/*var sw = Stopwatch.StartNew();
+					recLength = _socket.Receive(_receiveBuffer);
+					Console.WriteLine(sw.ElapsedMilliseconds);*/
+
+					if (task.Wait(2000))
+						break;
+
+					Console.WriteLine("No response from server " + DstAddr);
+				}
+
+				if (recLength < 4 || _receiveBuffer[0] != 0x2)
+				{
+					Console.Error.WriteLine("Invalid server response");
+					return;
+				}
+
+				var decLen = _decryptHelper.Decrypt(_receiveBuffer, 4);
+				if (decLen < 9)
+				{
+					Console.Error.WriteLine("Invalid server response");
+					return;
+				}
+
+				var sessionKey = cs.GetPacketFromServer(_decryptHelper.InnerBuf, decLen);
+				_encryptHelper = new EncryptHelper(sessionKey);
+				_decryptHelper = new DecryptHelper(sessionKey);
+				Console.WriteLine("Initialized connection to " + DstAddr);
+				_isInited = true;
+				_initingEvent.Set();
+			}
+			finally
+			{
+				Interlocked.Exchange(ref _isIniting, 0);
+			}
 		}
 
 		private void PingCycle()
@@ -70,22 +123,21 @@ namespace Force.AutoTunnel
 			}
 		}
 
-		protected void SendEncryptedCommand(byte commandId, byte[] packet, int packetLen)
-		{
-			var lenToSend = _encryptHelper.Encrypt(packet, packetLen);
-			var packetToSend = _encryptHelper.InnerBuf;
-			packetToSend[0] = commandId;
-			packetToSend[1] = (byte)(_currentSessionId & 0xff);
-			packetToSend[2] = (byte)((_currentSessionId >> 8) & 0xff);
-			packetToSend[3] = (byte)((_currentSessionId >> 16) & 0xff);
-			_socket.Send(packetToSend, lenToSend, SocketFlags.None);
-		}
-
 		protected override void Send(byte[] packet, int packetLen)
 		{
-			_initingEvent.WaitOne();
-			// _socket.Send(packet, packetLen, SocketFlags.None);
-			SendEncryptedCommand(0, packet, packetLen);
+			if (!_isInited)
+			{
+				Init();
+				// if (!_initingEvent.WaitOne(4000))
+				//	return;
+			}
+
+			if (_isInited)
+			{
+				var lenToSend = _encryptHelper.Encrypt(packet, packetLen);
+				var packetToSend = _encryptHelper.InnerBuf;
+				_socket.Send(packetToSend, lenToSend, SocketFlags.None);
+			}
 		}
 
 		private readonly byte[] _receiveBuffer = new byte[65536];
@@ -95,17 +147,28 @@ namespace Force.AutoTunnel
 			byte[] buf = _receiveBuffer;
 			while (!_disposed)
 			{
-				_socket.Receive(buf);
-				if (buf[0] == 0x3)
+				if (!_isInited)
+					_initingEvent.WaitOne();
+				if (_disposed)
+					return;
+
+				var len = _socket.Receive(buf);
+				// just drop data, assume that it is invalid
+				if (len % 16 != 0)
 				{
-					Console.WriteLine("Received an error flag from " + DstAddr);
-					// failed data
-					Init();
-					continue;
+					// in any case, this is error
+					// if (buf[0] == 0x3)
+					{
+						Console.WriteLine("Received an error flag from " + DstAddr);
+						_isInited = false;
+						// failed data
+						Init();
+						continue;
+					}
 				}
 
-				var decLen = _decryptHelper.Decrypt(buf);
-				OnReceive(_decryptHelper.InnerBuf, decLen);
+				var decLen = _decryptHelper.Decrypt(buf, 0);
+				_packetWriter.Write(_decryptHelper.InnerBuf, decLen);
 			}
 		}
 
@@ -113,6 +176,7 @@ namespace Force.AutoTunnel
 		{
 			base.Dispose();
 			_disposed = true;
+			_initingEvent.Set();
 			_socket.Dispose();
 		}
 	}

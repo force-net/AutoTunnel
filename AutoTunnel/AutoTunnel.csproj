@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ClientSender.cs" />
+    <Compile Include="PacketWriter.cs" />
     <Compile Include="Encryption\ClientHandshake.cs" />
     <Compile Include="Encryption\DecryptHelper.cs" />
     <Compile Include="Encryption\EncryptHelper.cs" />
