@@ -52,9 +52,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ClientSender.cs" />
+    <Compile Include="Encryption\ClientHandshake.cs" />
+    <Compile Include="Encryption\DecryptHelper.cs" />
+    <Compile Include="Encryption\EncryptHelper.cs" />
+    <Compile Include="Encryption\ServerHandshake.cs" />
+    <Compile Include="FirewallHelper.cs" />
     <Compile Include="InterfaceHelper.cs" />
     <Compile Include="Listener.cs" />
     <Compile Include="NativeHelper.cs" />
+    <Compile Include="Encryption\PasswordHelper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BaseSender.cs" />

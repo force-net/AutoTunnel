@@ -10,7 +10,7 @@ namespace Force.AutoTunnel
 
 		private bool _isExiting;
 
-		private readonly string _dstAddr;
+		protected readonly string DstAddr;
 
 		private WinDivert.WinDivertAddress _receiveAddr;
 
@@ -18,19 +18,21 @@ namespace Force.AutoTunnel
 
 		public DateTime LastActivity { get; private set; }
 
+		public int SessionId { get; protected set; }
+
 		public BaseSender(string dstAddr, IPEndPoint remoteEP)
 		{
 			Console.WriteLine("Sender was created for " + dstAddr);
-			_dstAddr = dstAddr;
+			this.DstAddr = dstAddr;
 			_receiveAddr = new WinDivert.WinDivertAddress();
 			_receiveAddr.IfIdx = InterfaceHelper.GetInterfaceId();
 
 			RemoteEP = remoteEP;
-			var udpSuff = remoteEP.Address.Equals(IPAddress.Parse(_dstAddr))
+			var udpSuff = remoteEP.Address.Equals(IPAddress.Parse(this.DstAddr))
 							? "(udp and udp.DstPort != " + remoteEP.Port + ")"
 							: "udp";
 			//  or (udp and udp.DstPort != 12017)
-			_handle = WinDivert.WinDivertOpen("outbound and (tcp or icmp or " + udpSuff + ") and (ip.DstAddr == " + _dstAddr + ")", WinDivert.LAYER_NETWORK, 0, 0);
+			_handle = WinDivert.WinDivertOpen("outbound and (tcp or icmp or " + udpSuff + ") and (ip.DstAddr == " + this.DstAddr + ")", WinDivert.LAYER_NETWORK, 0, 0);
 			Task.Factory.StartNew(StartInternal);
 		}
 
@@ -41,13 +43,13 @@ namespace Force.AutoTunnel
 			LastActivity = DateTime.UtcNow;
 		}
 
-		public void OnReceive(byte[] packet, int packetLen)
+		public virtual void OnReceive(byte[] packet, int packetLen)
 		{
 			UpdateLastActivity();
 			if (packetLen == 0)
 				return;
 			var writeLen = 0;
-			Console.WriteLine("< " + packetLen + " " + _receiveAddr.IfIdx + " " + _receiveAddr.SubIfIdx + " " + _receiveAddr.Direction);
+			// Console.WriteLine("< " + packetLen + " " + _receiveAddr.IfIdx + " " + _receiveAddr.SubIfIdx + " " + _receiveAddr.Direction);
 			// Console.WriteLine(" " + packet[9] + " " + packet[12] + "." + packet[13] + "." + packet[14] + "." + packet[15] + "->" + packet[16] + "." + packet[17] + "." + packet[18] + "." + packet[19] + " " + packet[10].ToString("X2") + packet[11].ToString("X2"));
 			// Console.WriteLine(BitConverter.ToString(inBuf, 0, cnt));
 			var x = WinDivert.WinDivertSend(_handle, packet, packetLen, ref _receiveAddr, ref writeLen);
@@ -66,7 +68,7 @@ namespace Force.AutoTunnel
 			int packetLen = 0;
 			while (!_isExiting && WinDivert.WinDivertRecv(_handle, packet, packet.Length, ref addr, ref packetLen))
 			{
-				Console.WriteLine("> " + packetLen + " " + addr.IfIdx + " " + addr.SubIfIdx + " " + addr.Direction);
+				// Console.WriteLine("> " + packetLen + " " + addr.IfIdx + " " + addr.SubIfIdx + " " + addr.Direction);
 				try
 				{
 					Send(packet, packetLen);
