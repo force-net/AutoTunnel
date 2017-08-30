@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace Force.AutoTunnel.Config
+namespace Force.AutoTunnel.Logging
 {
-	public class ListeningConfig
+	public interface ILog
 	{
-
+		void WriteLine(string line);
 	}
 }

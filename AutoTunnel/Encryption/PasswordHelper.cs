@@ -9,7 +9,7 @@ namespace Force.AutoTunnel
 		public static byte[] GenerateKey(string password)
 		{
 			// we encrypt all data with random value, so, we can use static password here
-			return new Rfc2898DeriveBytes(password, "AutoTunnel".Select(x => (byte)x).ToArray(), 4096).GetBytes(16);
+			return new Rfc2898DeriveBytes(string.IsNullOrEmpty(password) ? "no_password" : password, "AutoTunnel".Select(x => (byte)x).ToArray(), 4096).GetBytes(16);
 		}
 
 		public static Tuple<string, string> CreateRsa()

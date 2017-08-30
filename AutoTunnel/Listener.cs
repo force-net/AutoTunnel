@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Force.AutoTunnel.Config;
 using Force.AutoTunnel.Encryption;
+using Force.AutoTunnel.Logging;
 
 namespace Force.AutoTunnel
 {
@@ -14,18 +17,21 @@ namespace Force.AutoTunnel
 
 		private readonly byte[][] _serverKeys;
 
+		private readonly MainConfig _config;
+
 		private readonly PacketWriter _packetWriter;
 
-		public Listener(TunnelStorage storage, byte[][] serverKeys)
+		public Listener(TunnelStorage storage, MainConfig config)
 		{
 			_storage = storage;
-			_serverKeys = serverKeys;
+			_config = config;
+			_serverKeys = config.Keys.Select(PasswordHelper.GenerateKey).ToArray();
 			_packetWriter = new PacketWriter();
 		}
 
 		public void Start()
 		{
-			Console.WriteLine("Started listening for incoming connections");
+			LogHelper.Log.WriteLine("Started listening for incoming connections on " + _config.Port);
 			Task.Factory.StartNew(StartInternal);
 			Task.Factory.StartNew(CleanupThread);
 		}
@@ -34,11 +40,11 @@ namespace Force.AutoTunnel
 		{
 			while (true)
 			{
-				var oldSenders = _storage.GetOldSenders(TimeSpan.FromMinutes(10));
-				foreach (var os in oldSenders)
+				var oldSessions = _storage.GetOldSessions(TimeSpan.FromSeconds(_config.IdleSessionTime));
+				foreach (var os in oldSessions)
 				{
-					Console.WriteLine("Removing idle session " + os.Address + ":" + os.Port);
-					_storage.Remove(os);
+					LogHelper.Log.WriteLine("Removing idle session: " + os);
+					_storage.RemoveSession(os);
 				}
 
 				Thread.Sleep(10 * 60 * 1000);
@@ -50,7 +56,7 @@ namespace Force.AutoTunnel
 			Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 			try
 			{
-				s.Bind(new IPEndPoint(IPAddress.Any, 12017));
+				s.Bind(new IPEndPoint(IPAddress.Any, _config.Port));
 				byte[] inBuf = new byte[65536];
 				EndPoint ep1 = new IPEndPoint(IPAddress.Any, 0);
 				while (true)
@@ -59,6 +65,7 @@ namespace Force.AutoTunnel
 					{
 						int cnt = s.ReceiveFrom(inBuf, ref ep1);
 						IPEndPoint ep = (IPEndPoint)ep1;
+						TunnelStorage.Session session;
 
 						if (cnt == 0) continue;
 						byte[] decBuf = null;
@@ -66,7 +73,7 @@ namespace Force.AutoTunnel
 						{
 							if (inBuf[0] == 1)
 							{
-								Console.WriteLine("Estabilishing connection from " + ep.Address + ":" + ep.Port);
+								LogHelper.Log.WriteLine("Estabilishing connection from " + ep);
 								int dataLen = -1;
 								DecryptHelper decryptHelper = null;
 								EncryptHelper encryptHelper = null;
@@ -84,7 +91,7 @@ namespace Force.AutoTunnel
 								// data is invalid, do not reply
 								if (dataLen < 0)
 								{
-									Console.WriteLine("Invalid data from " + ep.Address + ":" + ep.Port);
+									LogHelper.Log.WriteLine("Invalid data from " + ep);
 									continue;
 								}
 								
@@ -99,42 +106,45 @@ namespace Force.AutoTunnel
 								initBuf[1] = 1; // version
 
 								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
-								Console.WriteLine("Estabilished connection from " + ep.Address + ":" + ep.Port);
+								LogHelper.Log.WriteLine("Estabilished connection from " + ep);
 								continue;
 							}
 
 							if (inBuf[0] == 0x5) // ping
 							{
+								session = _storage.GetSession(ep);
+								if (session != null) session.UpdateLastActivity();
 								continue;
 							}
 							else
 							{
 								// error
-								Console.WriteLine("Unsupported data from " + ep.Address + ":" + ep.Port);
+								LogHelper.Log.WriteLine("Unsupported data from " + ep);
 								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								continue;
 							}
 						}
 						else
 						{
-							var decryptor = _storage.GetSessionDecryptor(ep);
-							if (decryptor == null)
+							session = _storage.GetSession(ep);
+							if (session == null)
 							{
 								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
-								Console.WriteLine("Missing decryptor for " + ep.Address + ":" + ep.Port);
+								LogHelper.Log.WriteLine("Missing decryptor for " + ep);
 								continue;
 							}
 
-							var len = decryptor.Decrypt(inBuf, 0);
+							var len = session.Decryptor.Decrypt(inBuf, 0);
 							if (len < 0)
 							{
 								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
-								Console.WriteLine("Unable to decrypt data from " + ep.Address + ":" + ep.Port);
+								LogHelper.Log.WriteLine("Unable to decrypt data from " + ep);
 								continue;
 							}
 
-							decBuf = decryptor.InnerBuf;
+							decBuf = session.Decryptor.InnerBuf;
 							cnt = len;
+							session.UpdateLastActivity();
 						}
 
 						// var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
@@ -142,17 +152,16 @@ namespace Force.AutoTunnel
 						// if we already has option to estabilish connection to this ip, do not add additional sender
 						if (!_storage.OutgoingConnectionAdresses.Contains(sourceIp))
 						{
-							var sender = _storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+							var sender = _storage.GetOrAddSender(sourceIp, () => new ReplySender(session, sourceIp, s, _storage));
 							sender.UpdateLastActivity();
 
-							// ip was changed for client
-							if (!sender.DstAddr.Equals(sourceIp))
+							// session was changed for client, killing it and update data
+							if (!sender.Session.RemoteEP.Equals(ep))
 							{
-								Console.WriteLine("Remote endpoint " + ep.Address + ":" + ep.Port + " has changed ip: " + sender.DstAddr + "->" + sourceIp);
-								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
-								sender.Dispose();
-								_storage.Remove(ep);
-								// _storage.GetOrAddSender(ep, () => new ReplySender(sourceIp, s, ep, _storage));
+								Console.WriteLine("Client for " + sourceIp + " has changed endpoint from " + sender.Session.RemoteEP + " to " + ep);
+								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, sender.Session.RemoteEP);
+								_storage.RemoveSession(sender.Session.RemoteEP);
+								sender.Session = session;
 							}
 						}
 
@@ -160,8 +169,7 @@ namespace Force.AutoTunnel
 					}
 					catch (Exception ex)
 					{
-						Console.WriteLine(ex.Message);
-						Console.WriteLine(ex.StackTrace);
+						LogHelper.Log.WriteLine(ex);
 						break;
 					}
 				}

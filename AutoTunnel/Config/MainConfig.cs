@@ -16,6 +16,16 @@ namespace Force.AutoTunnel.Config
 
 		public string[] Keys { get; set; }
 
+		[DefaultValue(12017)]
+		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+		public int Port { get; set; }
+
 		public RemoteServerConfig[] RemoteServers { get; set; }
+
+		[DefaultValue(10 * 60)]
+		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+		public int IdleSessionTime { get; set; }
+
+		public string LogFileName { get; set; }
 	}
 }

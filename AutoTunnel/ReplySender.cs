@@ -1,8 +1,8 @@
-﻿using System;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 
 using Force.AutoTunnel.Encryption;
+using Force.AutoTunnel.Logging;
 
 namespace Force.AutoTunnel
 {
@@ -12,21 +12,18 @@ namespace Force.AutoTunnel
 
 		private readonly EncryptHelper _encryptHelper;
 
-		private readonly IPEndPoint _remoteEP;
-
-		public ReplySender(IPAddress dstAddr, Socket socket, IPEndPoint remoteEP, TunnelStorage storage)
-			: base(dstAddr, storage)
+		public ReplySender(TunnelStorage.Session session, IPAddress watchAddr, Socket socket, TunnelStorage storage)
+			: base(session, watchAddr, storage)
 		{
-			Console.WriteLine("Tunnel watcher was created for " + dstAddr);
+			LogHelper.Log.WriteLine("Tunnel watcher was created for " + watchAddr);
 			_socket = socket;
-			_encryptHelper = new EncryptHelper(storage.GetSessionKey(remoteEP));
-			_remoteEP = remoteEP;
+			_encryptHelper = new EncryptHelper(session.Key);
 		}
 
 		protected override void Send(byte[] packet, int packetLen)
 		{
 			var len = _encryptHelper.Encrypt(packet, packetLen);
-			_socket.SendTo(_encryptHelper.InnerBuf, len, SocketFlags.None, _remoteEP);
+			_socket.SendTo(_encryptHelper.InnerBuf, len, SocketFlags.None, Session.RemoteEP);
 		}
 	}
 }

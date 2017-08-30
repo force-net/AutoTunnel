@@ -1,16 +1,17 @@
 ﻿using System;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Force.AutoTunnel.Config;
 using Force.AutoTunnel.Encryption;
+using Force.AutoTunnel.Logging;
 
 namespace Force.AutoTunnel
 {
 	public class ClientSender : BaseSender
 	{
-		private readonly Socket _socket;
+		private Socket _socket;
 
 		private bool _disposed;
 
@@ -26,21 +27,23 @@ namespace Force.AutoTunnel
 
 		private bool _isInited;
 
-		public readonly IPEndPoint RemoteEP;
+		private readonly RemoteServerConfig _config;
 
-		public ClientSender(IPAddress dstAddr, IPEndPoint remoteEP, byte[] serverKey, TunnelStorage storage)
-			: base(dstAddr, storage)
+		public ClientSender(RemoteServerConfig config, TunnelStorage storage)
+			: base(null, EndpointHelper.ParseEndPoint(config.Address, 1).Address, storage)
 		{
-			Console.WriteLine("Tunnel watcher was created for " + dstAddr);
-			RemoteEP = remoteEP;
+			storage.OutgoingConnectionAdresses.Add(DstAddr);
+			_config = config;
+			_serverKey = PasswordHelper.GenerateKey(config.Key);
 			_packetWriter = new PacketWriter();
-			_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-			_socket.Connect(remoteEP);
 
-			_serverKey = serverKey;
+			LogHelper.Log.WriteLine("Tunnel watcher was created for " + config.Address);
 
 			Task.Factory.StartNew(ReceiveCycle);
-			// Task.Factory.StartNew(PingCycle);
+			if (config.KeepAlive)
+				Task.Factory.StartNew(PingCycle);
+			if (config.ConnectOnStart)
+				Init();
 		}
 
 		private int _isIniting;
@@ -65,7 +68,17 @@ namespace Force.AutoTunnel
 				_encryptHelper = new EncryptHelper(_serverKey);
 				_decryptHelper = new DecryptHelper(_serverKey);
 
-				Console.WriteLine("Initializing connection to " + DstAddr);
+				var ep = EndpointHelper.ParseEndPoint(_config.Address, 12017);
+				if (!ep.Address.Equals(DstAddr))
+				{
+					Storage.OutgoingConnectionAdresses.Remove(DstAddr);
+					ReInitDivert(ep.Address);
+					Storage.OutgoingConnectionAdresses.Add(DstAddr);
+				}
+
+				Storage.SetNewEndPoint(new byte[16], ep);
+
+				LogHelper.Log.WriteLine("Initializing connection to " + ep);
 
 				var lenToSend = _encryptHelper.Encrypt(cs.SendingPacket, sendingPacketLen);
 				var packetToSend = _encryptHelper.InnerBuf;
@@ -75,7 +88,14 @@ namespace Force.AutoTunnel
 				initBuf[1] = 1; // version
 				var recLength = 0;
 
+				// killing old socket
+				if (_socket != null)
+					_socket.Dispose();
+				_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+				_socket.Connect(ep);
+
 				Task task = null;
+				var period = 2000;
 				while (true)
 				{
 					_socket.Send(initBuf, initBuf.Length, SocketFlags.None);
@@ -84,10 +104,12 @@ namespace Force.AutoTunnel
 					recLength = _socket.Receive(_receiveBuffer);
 					Console.WriteLine(sw.ElapsedMilliseconds);*/
 
-					if (task.Wait(2000))
+					if (task.Wait(period))
 						break;
 
-					Console.WriteLine("No response from server " + DstAddr);
+					period = Math.Min(period + 2000, 1000 * 60);
+
+					LogHelper.Log.WriteLine("No response from server " + ep);
 				}
 
 				if (recLength < 4 || _receiveBuffer[0] != 0x2)
@@ -106,7 +128,7 @@ namespace Force.AutoTunnel
 				var sessionKey = cs.GetPacketFromServer(_decryptHelper.InnerBuf, decLen);
 				_encryptHelper = new EncryptHelper(sessionKey);
 				_decryptHelper = new DecryptHelper(sessionKey);
-				Console.WriteLine("Initialized connection to " + DstAddr);
+				LogHelper.Log.WriteLine("Initialized connection to " + ep);
 				_isInited = true;
 				_initingEvent.Set();
 			}
@@ -120,7 +142,8 @@ namespace Force.AutoTunnel
 		{
 			while (!_disposed)
 			{
-				Send(new byte[0], 0);
+				if (_isInited)
+					_socket.Send(new byte[] { 0x5, 0, 0, 0 }, 4, SocketFlags.None);
 				Thread.Sleep(15 * 1000);
 			}
 		}
@@ -161,7 +184,7 @@ namespace Force.AutoTunnel
 					// in any case, this is error
 					// if (buf[0] == 0x3)
 					{
-						Console.WriteLine("Received an error flag from " + DstAddr);
+						LogHelper.Log.WriteLine("Received an error flag from " + _socket.RemoteEndPoint);
 						_isInited = false;
 						// failed data
 						Init();

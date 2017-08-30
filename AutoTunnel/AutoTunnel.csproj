@@ -60,8 +60,13 @@
     </None>
     <Compile Include="ClientSender.cs" />
     <Compile Include="Config\RemoteServerConfig.cs" />
-    <Compile Include="Config\ListeningConfig.cs" />
     <Compile Include="Config\MainConfig.cs" />
+    <Compile Include="EndpointHelper.cs" />
+    <Compile Include="Logging\AggregateLog.cs" />
+    <Compile Include="Logging\ConsoleLog.cs" />
+    <Compile Include="Logging\FileLog.cs" />
+    <Compile Include="Logging\ILog.cs" />
+    <Compile Include="Logging\LogHelper.cs" />
     <Compile Include="PacketWriter.cs" />
     <Compile Include="Encryption\ClientHandshake.cs" />
     <Compile Include="Encryption\DecryptHelper.cs" />

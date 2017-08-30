@@ -13,8 +13,6 @@ namespace Force.AutoTunnel.Encryption
 
 		private readonly byte[] _headerBuf = new byte[16];
 
-		private int _counter;
-
 		public byte[] InnerBuf
 		{
 			get
