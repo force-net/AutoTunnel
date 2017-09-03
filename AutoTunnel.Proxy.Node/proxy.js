@@ -1,6 +1,10 @@
 const dgram = require('dgram');
+const dns = require('dns');
 
 var logFunc = console.log;
+var checkFunc = function () {
+	return true;
+};
 
 var start = function (portNumber) {
 	var server = dgram.createSocket('udp4');
@@ -28,25 +32,40 @@ var start = function (portNumber) {
 				var spl = dstHostAndPort.split(':');
 				var dstHost = spl[0];
 				var dstPort = (spl[1] || 12017) * 1;
-				var socket = dgram.createSocket('udp4');
-				socket.on('message', function (bmsg, bep) {
-					var pair = proxyPairs[ep.address + ':' + ep.port];
-					if (pair) {
-						pair.lastActivity = new Date().getTime();
-						server.send(bmsg, 0, bep.size, ep.port, ep.address);
+
+				dns.lookup(dstHost, 4, function (err, addr) {
+					if (err !== null) {
+						logFunc('Cannot resolve host ' + dstHost, err);
+						return;
 					}
+
+					if (!checkFunc(addr, dstHost)) {
+						logFunc('Host ' + dstHost + " was considered as invalid for proxyfying");
+						return
+					}
+
+					dstHost = addr;
+
+					var socket = dgram.createSocket('udp4');
+					socket.on('message', function (bmsg, bep) {
+						var pair = proxyPairs[ep.address + ':' + ep.port];
+						if (pair) {
+							pair.lastActivity = new Date().getTime();
+							server.send(bmsg, 0, bep.size, ep.port, ep.address);
+						}
+					});
+					proxyPairs[ep.address + ':' + ep.port] = {
+						sourceHost: ep.address,
+						sourcePort: ep.port,
+						host: dstHost,
+						port: dstPort,
+						targetSocket: socket,
+						lastActivity: new Date().getTime()
+					};
+					logFunc('Estabilished tunnel ', ep.address + ':' + ep.port + '->' + dstHost + ':' + dstPort);
+
+					// TODO: think about answer
 				});
-				proxyPairs[ep.address + ':' + ep.port] = {
-					sourceHost: ep.address,
-					sourcePort: ep.port,
-					host: dstHost,
-					port: dstPort,
-					targetSocket: socket, 
-					lastActivity: new Date().getTime()
-				};
-				logFunc('Estabilished tunnel ', ep.address + ':' + ep.port + '->' + dstHost + ':' + dstPort);
-				
-				// TODO: think about answer
 			} else {
 				var pair = proxyPairs[ep.address + ':' + ep.port];
 
@@ -97,5 +116,8 @@ module.exports = {
 	},
 	setLogger: function (loggerFunc) {
 		logFunc = loggerFunc;
+	},
+	setAllowedTargetIpCheckFunc: function(checkingFunc) {
+		checkFunc = checkingFunc;
 	}
 };

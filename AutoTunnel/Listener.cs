@@ -49,7 +49,7 @@ namespace Force.AutoTunnel
 					_storage.RemoveSession(os);
 				}
 
-				_stopEvent.WaitOne(10 * 60 * 1000);
+				_stopEvent.WaitOne(_config.IdleSessionTime * 1000);
 			}
 		}
 
@@ -124,6 +124,7 @@ namespace Force.AutoTunnel
 							{
 								session = _storage.GetSession(ep);
 								if (session != null) session.UpdateLastActivity();
+								s.SendTo(new byte[] { (byte)StateFlags.Pong, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								continue;
 							}
 							else

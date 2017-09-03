@@ -27,5 +27,9 @@ namespace Force.AutoTunnel.Config
 		public int IdleSessionTime { get; set; }
 
 		public string LogFileName { get; set; }
+
+		[DefaultValue(15)]
+		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+		public int PingBackTime { get; set; }
 	}
 }

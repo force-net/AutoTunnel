@@ -43,8 +43,7 @@ namespace Force.AutoTunnel
 			LogHelper.Log.WriteLine("Tunnel watcher was created for " + config.TunnelHost);
 
 			Task.Factory.StartNew(ReceiveCycle);
-			if (config.KeepAlive)
-				Task.Factory.StartNew(PingCycle);
+			Task.Factory.StartNew(PingCycle);
 			if (config.ConnectOnStart)
 				Init();
 			IPAddress dummy;
@@ -76,7 +75,6 @@ namespace Force.AutoTunnel
 		private int _isIniting;
 
 		private DateTime _lastInitRequest;
-
 
 		private void Init()
 		{
@@ -111,8 +109,8 @@ namespace Force.AutoTunnel
 
 				_connectEP = destEP;
 
-				Storage.AddSession(new byte[16], destEP).IsClientSession = true;
 				Storage.IncrementEstabilishing();
+				Storage.AddSession(new byte[16], destEP).IsClientSession = true;
 
 				if (proxyEP != null)
 					LogHelper.Log.WriteLine("Initializing connection to " + _config.ConnectHost + " via proxy " + proxyEP);
@@ -179,6 +177,7 @@ namespace Force.AutoTunnel
 				if (recLength < 4 || _receiveBuffer[0] != (byte)StateFlags.ConnectAnswer)
 				{
 					Console.Error.WriteLine("Invalid server response");
+					Storage.RemoveSession(destEP);
 					return;
 				}
 
@@ -186,6 +185,7 @@ namespace Force.AutoTunnel
 				if (decLen < 9)
 				{
 					Console.Error.WriteLine("Invalid server response");
+					Storage.RemoveSession(destEP);
 					return;
 				}
 
@@ -207,9 +207,27 @@ namespace Force.AutoTunnel
 
 		private void PingCycle()
 		{
+			DateTime lastReceiveLast = DateTime.MinValue;
 			while (!_disposed)
 			{
-				if (_isInited) _socket.Send(new byte[] { (byte)StateFlags.Ping, 0, 0, 0 }, 4, SocketFlags.None);
+				if (_isInited)
+				{
+					// problem with server? no answers, dropping connection
+					if (Session.LastActivity == lastReceiveLast)
+					{
+						_isInited = false;
+						lastReceiveLast = DateTime.MinValue;
+						if (_config.KeepAlive)
+							Init();
+					}
+
+					if (_config.KeepAlive || _lastSend.Subtract(Session.LastActivity).TotalSeconds > _config.PingInterval)
+					{
+						lastReceiveLast = Session.LastActivity;
+						_socket.Send(new byte[] { (byte)StateFlags.Ping, 0, 0, 0 }, 4, SocketFlags.None);
+						_lastSend = DateTime.UtcNow;
+					}
+				}
 				else
 				{
 					// force renew connection attepmt
@@ -233,11 +251,14 @@ namespace Force.AutoTunnel
 			{
 				var lenToSend = _encryptHelper.Encrypt(packet, packetLen);
 				var packetToSend = _encryptHelper.InnerBuf;
+				_lastSend = DateTime.UtcNow;
 				_socket.Send(packetToSend, lenToSend, SocketFlags.None);
 			}
 		}
 
 		private readonly byte[] _receiveBuffer = new byte[65536];
+
+		private DateTime _lastSend;
 
 		private void ReceiveCycle()
 		{
@@ -257,17 +278,19 @@ namespace Force.AutoTunnel
 				}
 				catch (Exception ex)
 				{
-					LogHelper.Log.WriteLine("Receive data error");
-					_isInited = false;
-					// LogHelper.Log.WriteLine(ex);
-					if (_socket != null)
+					if (_isIniting == 1 && _isInited)
 					{
-						_socket.Dispose();
-						_socket = null;
-					}
+						LogHelper.Log.WriteLine("Receive data error");
+						_isInited = false;
+						// LogHelper.Log.WriteLine(ex);
+						if (_socket != null)
+						{
+							_socket.Dispose();
+							_socket = null;
+						}
 
-					if (_config.KeepAlive)
-						Init();
+						if (_config.KeepAlive) Init();
+					}
 
 					Thread.Sleep(1000);
 					continue;
@@ -277,7 +300,7 @@ namespace Force.AutoTunnel
 				if (len % 16 != 0)
 				{
 					// in any case, this is error
-					// if (buf[0] == 0x3)
+					if (buf[0] != (byte)StateFlags.Pong)
 					{
 						LogHelper.Log.WriteLine("Received an error flag from " + _socket.RemoteEndPoint);
 						_isInited = false;
@@ -286,6 +309,8 @@ namespace Force.AutoTunnel
 						continue;
 					}
 				}
+
+				Session.UpdateLastActivity();
 
 				var decryptHelper = Session.Decryptor;
 				var decLen = decryptHelper.Decrypt(buf, 0);
