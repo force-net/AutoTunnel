@@ -1,12 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Net;
+using System.Linq;
+using System.ServiceProcess;
 using System.Threading;
 
 using Force.AutoTunnel.Config;
 using Force.AutoTunnel.Logging;
+using Force.AutoTunnel.Service;
 
 using Newtonsoft.Json;
 
@@ -14,8 +14,12 @@ namespace Force.AutoTunnel
 {
 	public class Program
 	{
+		public static MainConfig Config { get; private set; }
+
 		public static void Main(string[] args)
 		{
+			if (ProcessArgs(args)) return;
+
 			var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
 			if (!File.Exists(configPath))
 			{
@@ -28,9 +32,9 @@ namespace Force.AutoTunnel
 			try
 			{
 				config = new JsonSerializer().Deserialize<MainConfig>(new JsonTextReader(new StreamReader(File.OpenRead(configPath))));
-				if (config.Keys == null)
-					config.Keys = new string[0];
-				if (config.Keys.Length == 0) 
+				if (config.RemoteClients == null)
+					config.RemoteClients = new RemoteClientConfig[0];
+				if (config.RemoteClients.Length == 0) 
 					config.EnableListening = false;
 
 				var log = new AggregateLog();
@@ -50,23 +54,38 @@ namespace Force.AutoTunnel
 				return;
 			}
 
-			var ts = new TunnelStorage();
+			Config = config;
 
-			if (config.EnableListening)
+			if (Environment.UserInteractive)
 			{
-				if (config.AddFirewallRule)
-					FirewallHelper.AddOpenFirewallRule(config.Port.ToString(CultureInfo.InvariantCulture));
+				RunInConsole();
+			}
+			else
+			{
+				LogHelper.Log.WriteLine("Starting service...");
+				ServiceBase.Run(new MainService());
+			}
+		}
 
-				var l = new Listener(ts, config);
-				l.Start();
+		private static bool ProcessArgs(string[] args)
+		{
+			if (args.Any(x => x == "service"))
+			{
+				bool isUninstall = args.Any(x => x == "uninstall" || x == "remove");
+				MainServiceInstallerHelper.Process(!isUninstall, new string[0]);
+				return true;
 			}
 
-			var clientSenders = new List<ClientSender>();
-			foreach (var rs in config.RemoteServers ?? new RemoteServerConfig[0])
-			{
-				clientSenders.Add(new ClientSender(rs, ts));
-			}
+			return false;
+		}
 
+		private static void RunInConsole()
+		{
+			AppDomain.CurrentDomain.DomainUnload += (sender, args) => ConsoleHelper.RestoreOriginalIcon();
+			Console.CancelKeyPress += (sender, args) => ConsoleHelper.RestoreOriginalIcon();
+			Console.WriteLine("Press Ctrl+C for exit");
+			LogHelper.Log.WriteLine("Starting interactive...");
+			Starter.Start();
 			Thread.Sleep(-1);
 		}
 	}

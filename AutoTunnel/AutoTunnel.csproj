@@ -42,23 +42,34 @@
   <PropertyGroup>
     <AssemblyOriginatorKeyFile>..\force.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>..\tunnel_hUB_icon.ico</ApplicationIcon>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="Newtonsoft.Json, Version=9.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.9.0.1\lib\net40\Newtonsoft.Json.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Configuration.Install" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="app.manifest" />
     <None Include="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="ClientSender.cs" />
+    <Compile Include="Config\RemoteClientConfig.cs" />
     <Compile Include="Config\RemoteServerConfig.cs" />
     <Compile Include="Config\MainConfig.cs" />
     <Compile Include="EndpointHelper.cs" />
@@ -81,6 +92,15 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BaseSender.cs" />
     <Compile Include="ReplySender.cs" />
+    <Compile Include="Service\ConsoleHelper.cs" />
+    <Compile Include="Service\MainService.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Service\MainServiceInstaller.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Service\MainServiceInstallHelper.cs" />
+    <Compile Include="Starter.cs" />
     <Compile Include="TunnelStorage.cs" />
     <Compile Include="WinDivert.cs" />
   </ItemGroup>
@@ -103,6 +123,16 @@
     <None Include="WinDivert64.sys">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\tunnel_hUB_icon.ico">
+      <Link>tunnel_hUB_icon.ico</Link>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\tunnel_active.png">
+      <Link>tunnel_active.png</Link>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

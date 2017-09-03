@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,8 +19,6 @@ namespace Force.AutoTunnel
 
 		private EncryptHelper _encryptHelper;
 
-		private DecryptHelper _decryptHelper;
-
 		private readonly byte[] _serverKey;
 
 		private readonly ManualResetEvent _initingEvent = new ManualResetEvent(false);
@@ -29,21 +29,47 @@ namespace Force.AutoTunnel
 
 		private readonly RemoteServerConfig _config;
 
+		private IPEndPoint _connectEP;
+
 		public ClientSender(RemoteServerConfig config, TunnelStorage storage)
-			: base(null, EndpointHelper.ParseEndPoint(config.Address, 1).Address, storage)
+			: base(null, EndpointHelper.ParseEndPoint(config.TunnelHost, 1).Address, storage)
 		{
 			storage.OutgoingConnectionAdresses.Add(DstAddr);
 			_config = config;
 			_serverKey = PasswordHelper.GenerateKey(config.Key);
 			_packetWriter = new PacketWriter();
 
-			LogHelper.Log.WriteLine("Tunnel watcher was created for " + config.Address);
+			LogHelper.Log.WriteLine("Tunnel watcher was created for " + config.TunnelHost);
 
 			Task.Factory.StartNew(ReceiveCycle);
 			if (config.KeepAlive)
 				Task.Factory.StartNew(PingCycle);
 			if (config.ConnectOnStart)
 				Init();
+			IPAddress dummy;
+			if (!IPAddress.TryParse(config.TunnelHost, out dummy))
+				Task.Factory.StartNew(CheckHostChange);
+		}
+
+		private void CheckHostChange()
+		{
+			// checking if target host has changed it ip address to other
+			while (!_disposed)
+			{
+				var addresses = Dns.GetHostAddresses(_config.TunnelHost);
+				if (addresses.Length > 0)
+				{
+					if (!addresses.Any(x => x.Equals(DstAddr)))
+					{
+						Storage.OutgoingConnectionAdresses.Remove(DstAddr);
+						DstAddr = addresses.First();
+						ReInitDivert(DstAddr);
+						Storage.OutgoingConnectionAdresses.Add(DstAddr);
+					}
+				}
+
+				Thread.Sleep(60 * 1000);
+			}
 		}
 
 		private int _isIniting;
@@ -66,17 +92,18 @@ namespace Force.AutoTunnel
 				var cs = new ClientHandshake();
 				var sendingPacketLen = cs.GetPacketForSending();
 				_encryptHelper = new EncryptHelper(_serverKey);
-				_decryptHelper = new DecryptHelper(_serverKey);
+				var decryptHelper = new DecryptHelper(_serverKey);
 
-				var ep = EndpointHelper.ParseEndPoint(_config.Address, 12017);
-				if (!ep.Address.Equals(DstAddr))
+				var ep = EndpointHelper.ParseEndPoint(_config.ConnectHost, 12017);
+
+				if (!ep.Equals(_connectEP) && _connectEP != null)
 				{
-					Storage.OutgoingConnectionAdresses.Remove(DstAddr);
-					ReInitDivert(ep.Address);
-					Storage.OutgoingConnectionAdresses.Add(DstAddr);
+					Storage.RemoveSession(_connectEP);
 				}
 
-				Storage.SetNewEndPoint(new byte[16], ep);
+				_connectEP = ep;
+
+				Storage.AddSession(new byte[16], ep).IsClientSession = true;
 
 				LogHelper.Log.WriteLine("Initializing connection to " + ep);
 
@@ -118,16 +145,18 @@ namespace Force.AutoTunnel
 					return;
 				}
 
-				var decLen = _decryptHelper.Decrypt(_receiveBuffer, 4);
+				var decLen = decryptHelper.Decrypt(_receiveBuffer, 4);
 				if (decLen < 9)
 				{
 					Console.Error.WriteLine("Invalid server response");
 					return;
 				}
 
-				var sessionKey = cs.GetPacketFromServer(_decryptHelper.InnerBuf, decLen);
+				var sessionKey = cs.GetPacketFromServer(decryptHelper.InnerBuf, decLen);
 				_encryptHelper = new EncryptHelper(sessionKey);
-				_decryptHelper = new DecryptHelper(sessionKey);
+				var session = Storage.GetSession(ep);
+				session.Decryptor = new DecryptHelper(sessionKey);
+				Session = session;
 				LogHelper.Log.WriteLine("Initialized connection to " + ep);
 				_isInited = true;
 				_initingEvent.Set();
@@ -177,7 +206,19 @@ namespace Force.AutoTunnel
 				if (_disposed)
 					return;
 
-				var len = _socket.Receive(buf);
+				int len;
+
+				try
+				{
+					len = _socket.Receive(buf);
+				}
+				catch (Exception)
+				{
+					LogHelper.Log.WriteLine("Receive data error");
+					Thread.Sleep(1000);
+					continue;
+				}
+
 				// just drop data, assume that it is invalid
 				if (len % 16 != 0)
 				{
@@ -192,8 +233,9 @@ namespace Force.AutoTunnel
 					}
 				}
 
-				var decLen = _decryptHelper.Decrypt(buf, 0);
-				_packetWriter.Write(_decryptHelper.InnerBuf, decLen);
+				var decryptHelper = Session.Decryptor;
+				var decLen = decryptHelper.Decrypt(buf, 0);
+				_packetWriter.Write(decryptHelper.InnerBuf, decLen);
 			}
 		}
 

@@ -1,6 +1,14 @@
 ﻿{
-	"keys": ["key1"],
+	"remoteClients": [
+		{ "key": "key1" }
+	],
 	"remoteServers": [
-		{ "address": "192.168.16.8", "key": "key1", "keepAlive": true, "connectOnStart": true }
+		{
+			"tunnelHost": "192.168.16.8",
+			"connectHost": "192.168.18.1:12017",
+			"key": "key1",
+			"keepAlive": true,
+			"connectOnStart": true
+		}
 	]
 }

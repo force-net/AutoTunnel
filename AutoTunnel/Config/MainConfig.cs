@@ -14,7 +14,7 @@ namespace Force.AutoTunnel.Config
 		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 		public bool AddFirewallRule { get; set; }
 
-		public string[] Keys { get; set; }
+		public RemoteClientConfig[] RemoteClients { get; set; }
 
 		[DefaultValue(12017)]
 		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]

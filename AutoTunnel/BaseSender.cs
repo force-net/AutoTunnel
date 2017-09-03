@@ -57,8 +57,19 @@ namespace Force.AutoTunnel
 			{
 				if (!WinDivert.WinDivertRecv(_handle, packet, packet.Length, ref addr, ref packetLen))
 				{
-					LogHelper.Log.WriteLine("Cannot receive network data: " + Marshal.GetLastWin32Error());
-					Thread.Sleep(1000);
+					// showing error only if handle is not removed
+					if (_handle != IntPtr.Zero)
+					{
+						LogHelper.Log.WriteLine("Cannot receive network data: " + Marshal.GetLastWin32Error());
+						Thread.Sleep(1000);
+					}
+
+					continue;
+				}
+				// we cannot handle such packets,
+				// todo: think about writing to log
+				if (packetLen >= ((65507 / 16) * 16) - 16)
+				{
 					continue;
 				}
 				// Console.WriteLine("Recv: " + packet[16] + "." + packet[17] + "." + packet[18] + "." + packet[19] + ":" + (packet[23] | ((uint)packet[22] << 8)));

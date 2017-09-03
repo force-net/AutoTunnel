@@ -12,8 +12,8 @@ namespace Force.AutoTunnel
 				ProcessRunner.RunProcess("netsh", "firewall add portopening TCP " + port + " AutoTunnel ENABLE all");
 			else
 			{
-				ProcessRunner.RunProcess("netsh", "advfirewall firewall delete rule name=\"AutoTunnel\" protocol=TCP dir=in localport=" + port);
-				ProcessRunner.RunProcess("netsh", "advfirewall firewall add rule name=\"AutoTunnel\" protocol=TCP dir=in localport=" + port + " action=allow");
+				ProcessRunner.RunProcess("netsh", "advfirewall firewall delete rule name=\"AutoTunnel\" protocol=UDP dir=in localport=" + port);
+				ProcessRunner.RunProcess("netsh", "advfirewall firewall add rule name=\"AutoTunnel\" protocol=UDP dir=in localport=" + port + " action=allow");
 			}
 		}
 
@@ -25,7 +25,7 @@ namespace Force.AutoTunnel
 			}
 			else
 			{
-				ProcessRunner.RunProcess("netsh", "advfirewall firewall delete rule name=\"AutoTunnel\" protocol=TCP dir=in localport=" + port);
+				ProcessRunner.RunProcess("netsh", "advfirewall firewall delete rule name=\"AutoTunnel\" protocol=UDP dir=in");
 			}
 		}
 

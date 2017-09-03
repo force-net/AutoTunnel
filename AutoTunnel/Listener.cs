@@ -11,21 +11,23 @@ using Force.AutoTunnel.Logging;
 
 namespace Force.AutoTunnel
 {
-	public class Listener
+	public class Listener : IDisposable
 	{
 		private readonly TunnelStorage _storage;
-
-		private readonly byte[][] _serverKeys;
 
 		private readonly MainConfig _config;
 
 		private readonly PacketWriter _packetWriter;
 
+		private bool _disposed;
+
+		private readonly ManualResetEvent _stopEvent = new ManualResetEvent(false);
+
 		public Listener(TunnelStorage storage, MainConfig config)
 		{
 			_storage = storage;
 			_config = config;
-			_serverKeys = config.Keys.Select(PasswordHelper.GenerateKey).ToArray();
+
 			_packetWriter = new PacketWriter();
 		}
 
@@ -38,7 +40,7 @@ namespace Force.AutoTunnel
 
 		private void CleanupThread()
 		{
-			while (true)
+			while (!_disposed)
 			{
 				var oldSessions = _storage.GetOldSessions(TimeSpan.FromSeconds(_config.IdleSessionTime));
 				foreach (var os in oldSessions)
@@ -47,19 +49,22 @@ namespace Force.AutoTunnel
 					_storage.RemoveSession(os);
 				}
 
-				Thread.Sleep(10 * 60 * 1000);
+				_stopEvent.WaitOne(10 * 60 * 1000);
 			}
 		}
+
+		private Socket _socket;
 
 		private void StartInternal()
 		{
 			Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+			_socket = s;
 			try
 			{
 				s.Bind(new IPEndPoint(IPAddress.Any, _config.Port));
 				byte[] inBuf = new byte[65536];
 				EndPoint ep1 = new IPEndPoint(IPAddress.Any, 0);
-				while (true)
+				while (!_disposed)
 				{
 					try
 					{
@@ -77,13 +82,17 @@ namespace Force.AutoTunnel
 								int dataLen = -1;
 								DecryptHelper decryptHelper = null;
 								EncryptHelper encryptHelper = null;
-								foreach (var serverKey in _serverKeys)
+								RemoteClientConfig selectedRemoteClient = null;
+								foreach (var remoteClient in _config.RemoteClients)
 								{
-									decryptHelper = new DecryptHelper(serverKey);
+									if (remoteClient.BinaryKey == null) 
+										remoteClient.BinaryKey = PasswordHelper.GenerateKey(remoteClient.Key);
+									decryptHelper = new DecryptHelper(remoteClient.BinaryKey);
 									dataLen = decryptHelper.Decrypt(inBuf, 4);
 									if (dataLen > 0)
 									{
-										encryptHelper = new EncryptHelper(serverKey);
+										encryptHelper = new EncryptHelper(remoteClient.BinaryKey);
+										selectedRemoteClient = remoteClient;
 										break;
 									}
 								}
@@ -97,7 +106,7 @@ namespace Force.AutoTunnel
 								
 								var serverHandshake = new ServerHandshake();
 								var outPacket = serverHandshake.GetOutPacket(decryptHelper.InnerBuf, dataLen);
-								_storage.SetNewEndPoint(serverHandshake.SessionKey, ep);
+								_storage.AddSession(serverHandshake.SessionKey, ep);
 								
 								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
 								var initBuf = new byte[outLen + 4];
@@ -106,7 +115,8 @@ namespace Force.AutoTunnel
 								initBuf[1] = 1; // version
 
 								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
-								LogHelper.Log.WriteLine("Estabilished connection from " + ep);
+								var descr = selectedRemoteClient != null ? (!string.IsNullOrEmpty(selectedRemoteClient.Description) ? " as " + selectedRemoteClient.BinaryKey : string.Empty) : string.Empty;
+								LogHelper.Log.WriteLine("Estabilished connection from " + ep + descr);
 								continue;
 							}
 
@@ -169,7 +179,8 @@ namespace Force.AutoTunnel
 					}
 					catch (Exception ex)
 					{
-						LogHelper.Log.WriteLine(ex);
+						if (!_disposed)
+							LogHelper.Log.WriteLine(ex);
 						break;
 					}
 				}
@@ -177,6 +188,18 @@ namespace Force.AutoTunnel
 			catch (SocketException)
 			{
 				return;
+			}
+		}
+
+		public void Dispose()
+		{
+			_disposed = true;
+			_stopEvent.Set();
+			_packetWriter.Dispose();
+			if (_socket != null)
+			{
+				_socket.Dispose();
+				_socket = null;
 			}
 		}
 	}

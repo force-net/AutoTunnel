@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 
 using Force.AutoTunnel.Encryption;
+using Force.AutoTunnel.Service;
 
 namespace Force.AutoTunnel
 {
@@ -26,10 +27,18 @@ namespace Force.AutoTunnel
 		public IPEndPoint[] GetOldSessions(TimeSpan killTime)
 		{
 			var dt = DateTime.UtcNow;
-			return _sessions.Where(x => dt.Subtract(x.Value.LastActivity) >= killTime)
+			return _sessions.Where(x => !x.Value.IsClientSession && dt.Subtract(x.Value.LastActivity) >= killTime)
 				.Select(x => x.Key)
 				.Select(x => new IPEndPoint((long)(x >> 16), (int)(x & 0xffff)))
 				.ToArray();
+		}
+
+		public void RemoveAllSessions()
+		{
+			_sessions.Keys
+				.Select(x => new IPEndPoint((long)(x >> 16), (int)(x & 0xffff)))
+				.ToList()
+				.ForEach(RemoveSession);
 		}
 
 		public void RemoveSession(IPEndPoint endPoint)
@@ -37,12 +46,19 @@ namespace Force.AutoTunnel
 			var hostKey = GetHostKey(endPoint);
 			Session session;
 			if (_sessions.TryRemove(hostKey, out session))
-				_clients.Where(x => x.Value.Session == session).Select(x => x.Key).ToList().ForEach(x =>
-					{
-						BaseSender value;
-						if (_clients.TryRemove(x, out value))
-							value.Dispose();
-					});
+			{
+				if (session.IsClientSession)
+					return;
+				_clients.Where(x => x.Value.Session == session).Select(x => x.Key).ToList().ForEach(
+					x =>
+						{
+							BaseSender value;
+							if (_clients.TryRemove(x, out value)) value.Dispose();
+						});
+			}
+
+			if (_sessions.Count == 0)
+				ConsoleHelper.RestoreOriginalIcon();
 		}
 
 		public class Session
@@ -61,6 +77,8 @@ namespace Force.AutoTunnel
 
 			public DateTime LastActivity { get; private set; }
 
+			public bool IsClientSession { get; set; }
+
 			public void UpdateLastActivity()
 			{
 				LastActivity = DateTime.UtcNow;
@@ -69,14 +87,17 @@ namespace Force.AutoTunnel
 
 		private readonly ConcurrentDictionary<ulong, Session> _sessions = new ConcurrentDictionary<ulong, Session>();
 
-		public void SetNewEndPoint(byte[] sessionKey, IPEndPoint remoteEP)
+		public Session AddSession(byte[] sessionKey, IPEndPoint remoteEP)
 		{
+			ConsoleHelper.SetActiveIcon();
 			var hostKey = GetHostKey(remoteEP);
-			_sessions[hostKey] = new Session(remoteEP)
-									{
-										Key = sessionKey,
-										Decryptor = new DecryptHelper(sessionKey)
-									};
+			var s = new Session(remoteEP)
+				{
+					Key = sessionKey,
+					Decryptor = new DecryptHelper(sessionKey)
+				};
+			_sessions[hostKey] = s;
+			return s;
 		}
 
 		public Session GetSession(IPEndPoint remoteHost)
