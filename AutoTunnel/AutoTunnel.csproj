@@ -101,6 +101,7 @@
     </Compile>
     <Compile Include="Service\MainServiceInstallHelper.cs" />
     <Compile Include="Starter.cs" />
+    <Compile Include="StateFlags.cs" />
     <Compile Include="TunnelStorage.cs" />
     <Compile Include="WinDivert.cs" />
   </ItemGroup>
@@ -132,6 +133,11 @@
   <ItemGroup>
     <EmbeddedResource Include="..\tunnel_active.png">
       <Link>tunnel_active.png</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\tunnel_estabilishing.png">
+      <Link>tunnel_estabilishing.png</Link>
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

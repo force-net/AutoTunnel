@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -74,8 +75,12 @@ namespace Force.AutoTunnel
 
 		private int _isIniting;
 
+		private DateTime _lastInitRequest;
+
+
 		private void Init()
 		{
+			_lastInitRequest = DateTime.UtcNow;
 			if (_isIniting == 1)
 				return;
 			Task.Factory.StartNew(InitInternal);
@@ -94,24 +99,31 @@ namespace Force.AutoTunnel
 				_encryptHelper = new EncryptHelper(_serverKey);
 				var decryptHelper = new DecryptHelper(_serverKey);
 
-				var ep = EndpointHelper.ParseEndPoint(_config.ConnectHost, 12017);
+				var proxyEP = !string.IsNullOrEmpty(_config.ProxyHost) ? EndpointHelper.ParseEndPoint(_config.ProxyHost, 12018) : null;
+				var connectEP = proxyEP == null ? EndpointHelper.ParseEndPoint(_config.ConnectHost, 12017) : null;
 
-				if (!ep.Equals(_connectEP) && _connectEP != null)
+				var destEP = proxyEP ?? connectEP;
+
+				if (!destEP.Equals(_connectEP) && _connectEP != null)
 				{
 					Storage.RemoveSession(_connectEP);
 				}
 
-				_connectEP = ep;
+				_connectEP = destEP;
 
-				Storage.AddSession(new byte[16], ep).IsClientSession = true;
+				Storage.AddSession(new byte[16], destEP).IsClientSession = true;
+				Storage.IncrementEstabilishing();
 
-				LogHelper.Log.WriteLine("Initializing connection to " + ep);
+				if (proxyEP != null)
+					LogHelper.Log.WriteLine("Initializing connection to " + _config.ConnectHost + " via proxy " + proxyEP);
+				else
+					LogHelper.Log.WriteLine("Initializing connection to " + connectEP);
 
 				var lenToSend = _encryptHelper.Encrypt(cs.SendingPacket, sendingPacketLen);
 				var packetToSend = _encryptHelper.InnerBuf;
 				var initBuf = new byte[lenToSend + 4];
 				Buffer.BlockCopy(packetToSend, 0, initBuf, 4, lenToSend);
-				initBuf[0] = 1;
+				initBuf[0] = (byte)StateFlags.Connecting;
 				initBuf[1] = 1; // version
 				var recLength = 0;
 
@@ -119,12 +131,33 @@ namespace Force.AutoTunnel
 				if (_socket != null)
 					_socket.Dispose();
 				_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-				_socket.Connect(ep);
+				_socket.Connect(destEP);
 
 				Task task = null;
 				var period = 2000;
 				while (true)
 				{
+					if (proxyEP != null)
+					{
+						// do not encrypt data to proxy, bcs it should be simple and do not work with encryption
+						// can be changed in future version
+						var bytesHost = Encoding.UTF8.GetBytes(_config.ConnectHost);
+						var totalLen = 4 + 4 + bytesHost.Length;
+						// should not be divided to 16 (we need to separate message from usual packets
+						if (totalLen % 16 == 0) totalLen++;
+						var proxyBuf = new byte[totalLen];
+						proxyBuf[0] = (byte)StateFlags.ProxyConnecting;
+						proxyBuf[1] = 1; // version
+						proxyBuf[4] = (byte)bytesHost.Length;
+						proxyBuf[5] = (byte)(bytesHost.Length >> 8);
+						proxyBuf[6] = (byte)(bytesHost.Length >> 16);
+						proxyBuf[7] = (byte)(bytesHost.Length >> 24);
+						Buffer.BlockCopy(bytesHost, 0, proxyBuf, 8, bytesHost.Length);
+						_socket.Send(proxyBuf, proxyBuf.Length, SocketFlags.None);
+						// just to give more chances to process this message by other parts of network
+						Thread.Sleep(10);
+					}
+
 					_socket.Send(initBuf, initBuf.Length, SocketFlags.None);
 					task = task ?? Task.Factory.StartNew(() => recLength = _socket.Receive(_receiveBuffer));
 					/*var sw = Stopwatch.StartNew();
@@ -136,10 +169,14 @@ namespace Force.AutoTunnel
 
 					period = Math.Min(period + 2000, 1000 * 60);
 
-					LogHelper.Log.WriteLine("No response from server " + ep);
+					LogHelper.Log.WriteLine("No response from server " + destEP);
+					if (DateTime.UtcNow.Subtract(_lastInitRequest).TotalSeconds > 60)
+					{
+						LogHelper.Log.WriteLine("Stopping connect atteptions to " + destEP + " until another request will occure");
+					}
 				}
 
-				if (recLength < 4 || _receiveBuffer[0] != 0x2)
+				if (recLength < 4 || _receiveBuffer[0] != (byte)StateFlags.ConnectAnswer)
 				{
 					Console.Error.WriteLine("Invalid server response");
 					return;
@@ -154,16 +191,17 @@ namespace Force.AutoTunnel
 
 				var sessionKey = cs.GetPacketFromServer(decryptHelper.InnerBuf, decLen);
 				_encryptHelper = new EncryptHelper(sessionKey);
-				var session = Storage.GetSession(ep);
+				var session = Storage.GetSession(destEP);
 				session.Decryptor = new DecryptHelper(sessionKey);
 				Session = session;
-				LogHelper.Log.WriteLine("Initialized connection to " + ep);
+				LogHelper.Log.WriteLine("Initialized connection to " + destEP);
 				_isInited = true;
 				_initingEvent.Set();
 			}
 			finally
 			{
 				Interlocked.Exchange(ref _isIniting, 0);
+				Storage.DecrementEstabilishing();
 			}
 		}
 
@@ -171,9 +209,14 @@ namespace Force.AutoTunnel
 		{
 			while (!_disposed)
 			{
-				if (_isInited)
-					_socket.Send(new byte[] { 0x5, 0, 0, 0 }, 4, SocketFlags.None);
-				Thread.Sleep(15 * 1000);
+				if (_isInited) _socket.Send(new byte[] { (byte)StateFlags.Ping, 0, 0, 0 }, 4, SocketFlags.None);
+				else
+				{
+					// force renew connection attepmt
+					_lastInitRequest = DateTime.UtcNow;
+				}
+
+				Thread.Sleep(_config.PingInterval * 1000);
 			}
 		}
 
@@ -212,9 +255,20 @@ namespace Force.AutoTunnel
 				{
 					len = _socket.Receive(buf);
 				}
-				catch (Exception)
+				catch (Exception ex)
 				{
 					LogHelper.Log.WriteLine("Receive data error");
+					_isInited = false;
+					// LogHelper.Log.WriteLine(ex);
+					if (_socket != null)
+					{
+						_socket.Dispose();
+						_socket = null;
+					}
+
+					if (_config.KeepAlive)
+						Init();
+
 					Thread.Sleep(1000);
 					continue;
 				}

@@ -11,10 +11,11 @@ namespace Force.AutoTunnel.Service
 		[DllImport("user32.dll")]
 		private static extern IntPtr SendMessage(IntPtr hWnd, uint message, int lParam, IntPtr wParam);
 
-		private static IntPtr _iconMainHandle = IntPtr.Zero;
+		private static IntPtr _iconActiveHandle = IntPtr.Zero;
+		private static IntPtr _iconEstabilishingHandle = IntPtr.Zero;
 		private static IntPtr _iconParentHandle = IntPtr.Zero;
 
-		public static void RestoreOriginalIcon()
+		private static void RestoreOriginalIcon()
 		{
 			if (!Environment.UserInteractive)
 				return;
@@ -22,23 +23,32 @@ namespace Force.AutoTunnel.Service
 			SendMessage(GetConsoleWindow(), 0x80, 0, _iconParentHandle);
 		}
 
-		public static void SetActiveIcon()
+		public enum IconStatus
+		{
+			Active,
+			Estabilishing,
+			Default
+		}
+
+		public static void SetActiveIcon(IconStatus status)
 		{
 			if (!Environment.UserInteractive)
 				return;
-			if (_iconMainHandle == IntPtr.Zero)
+			if (_iconActiveHandle == IntPtr.Zero)
 			{
 // ReSharper disable AssignNullToNotNullAttribute
-				var icon = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_active.png")).GetHicon();
+				_iconActiveHandle = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_active.png")).GetHicon();
+				_iconEstabilishingHandle = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_estabilishing.png")).GetHicon();
 // ReSharper restore AssignNullToNotNullAttribute
 
-				_iconMainHandle = icon;
-
-				SendMessage(GetConsoleWindow(), 0x80, 1, _iconMainHandle);
-				_iconParentHandle = SendMessage(GetConsoleWindow(), 0x80, 0, _iconMainHandle);
+				_iconParentHandle = SendMessage(GetConsoleWindow(), 0x80, 0, _iconActiveHandle);
 			}
 
-			SendMessage(GetConsoleWindow(), 0x80, 0, _iconMainHandle);
+			var icon = _iconParentHandle;
+			if (status == IconStatus.Active) icon = _iconActiveHandle;
+			else if (status == IconStatus.Estabilishing) icon = _iconEstabilishingHandle;
+			SendMessage(GetConsoleWindow(), 0x80, 0, icon);
+			SendMessage(GetConsoleWindow(), 0x80, 1, icon);
 		}
 	}
 }

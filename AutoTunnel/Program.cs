@@ -36,6 +36,18 @@ namespace Force.AutoTunnel
 					config.RemoteClients = new RemoteClientConfig[0];
 				if (config.RemoteClients.Length == 0) 
 					config.EnableListening = false;
+				if (config.RemoteServers == null)
+					config.RemoteServers = new RemoteServerConfig[0];
+				foreach (var remoteServerConfig in config.RemoteServers)
+				{
+					if (string.IsNullOrEmpty(remoteServerConfig.ConnectHost) && string.IsNullOrEmpty(remoteServerConfig.TunnelHost))
+						throw new InvalidOperationException("Missing host info in config");
+
+					if (string.IsNullOrEmpty(remoteServerConfig.TunnelHost))
+						remoteServerConfig.TunnelHost = remoteServerConfig.ConnectHost;
+					if (string.IsNullOrEmpty(remoteServerConfig.ConnectHost))
+						remoteServerConfig.ConnectHost = remoteServerConfig.TunnelHost;
+				}
 
 				var log = new AggregateLog();
 				if (Environment.UserInteractive) log.AddLog(new ConsoleLog());
@@ -81,8 +93,8 @@ namespace Force.AutoTunnel
 
 		private static void RunInConsole()
 		{
-			AppDomain.CurrentDomain.DomainUnload += (sender, args) => ConsoleHelper.RestoreOriginalIcon();
-			Console.CancelKeyPress += (sender, args) => ConsoleHelper.RestoreOriginalIcon();
+			AppDomain.CurrentDomain.DomainUnload += (sender, args) => ConsoleHelper.SetActiveIcon(ConsoleHelper.IconStatus.Default);
+			Console.CancelKeyPress += (sender, args) => ConsoleHelper.SetActiveIcon(ConsoleHelper.IconStatus.Default);
 			Console.WriteLine("Press Ctrl+C for exit");
 			LogHelper.Log.WriteLine("Starting interactive...");
 			Starter.Start();

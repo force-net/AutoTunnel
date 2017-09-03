@@ -111,7 +111,7 @@ namespace Force.AutoTunnel
 								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
 								var initBuf = new byte[outLen + 4];
 								Buffer.BlockCopy(encryptHelper.InnerBuf, 0, initBuf, 4, outLen);
-								initBuf[0] = 2;
+								initBuf[0] = (byte)StateFlags.ConnectAnswer;
 								initBuf[1] = 1; // version
 
 								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
@@ -130,7 +130,7 @@ namespace Force.AutoTunnel
 							{
 								// error
 								LogHelper.Log.WriteLine("Unsupported data from " + ep);
-								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								s.SendTo(new byte[] { (byte)StateFlags.ErrorFromServer, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								continue;
 							}
 						}
@@ -139,7 +139,7 @@ namespace Force.AutoTunnel
 							session = _storage.GetSession(ep);
 							if (session == null)
 							{
-								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								s.SendTo(new byte[] { (byte)StateFlags.ErrorFromServer, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								LogHelper.Log.WriteLine("Missing decryptor for " + ep);
 								continue;
 							}
@@ -147,7 +147,7 @@ namespace Force.AutoTunnel
 							var len = session.Decryptor.Decrypt(inBuf, 0);
 							if (len < 0)
 							{
-								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, ep);
+								s.SendTo(new byte[] { (byte)StateFlags.ErrorFromServer, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								LogHelper.Log.WriteLine("Unable to decrypt data from " + ep);
 								continue;
 							}

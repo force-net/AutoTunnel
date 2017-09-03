@@ -28,7 +28,7 @@ namespace Force.AutoTunnel
 			}
 
 			_clientSenders = new List<ClientSender>();
-			foreach (var rs in config.RemoteServers ?? new RemoteServerConfig[0])
+			foreach (var rs in config.RemoteServers)
 			{
 				_clientSenders.Add(new ClientSender(rs, _storage));
 			}

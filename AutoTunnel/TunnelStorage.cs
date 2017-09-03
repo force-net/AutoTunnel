@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 
 using Force.AutoTunnel.Encryption;
 using Force.AutoTunnel.Service;
@@ -14,8 +15,6 @@ namespace Force.AutoTunnel
 		private readonly ConcurrentDictionary<long, BaseSender> _clients = new ConcurrentDictionary<long, BaseSender>();
 
 		public readonly HashSet<IPAddress> OutgoingConnectionAdresses = new HashSet<IPAddress>();
-
-		private readonly List<ClientSender> _clientSenders = new List<ClientSender>();
 
 		public BaseSender GetOrAddSender(IPAddress dstAddr, Func<BaseSender> creatorFunc)
 		{
@@ -57,8 +56,7 @@ namespace Force.AutoTunnel
 						});
 			}
 
-			if (_sessions.Count == 0)
-				ConsoleHelper.RestoreOriginalIcon();
+			SetIcon();
 		}
 
 		public class Session
@@ -89,7 +87,6 @@ namespace Force.AutoTunnel
 
 		public Session AddSession(byte[] sessionKey, IPEndPoint remoteEP)
 		{
-			ConsoleHelper.SetActiveIcon();
 			var hostKey = GetHostKey(remoteEP);
 			var s = new Session(remoteEP)
 				{
@@ -97,6 +94,7 @@ namespace Force.AutoTunnel
 					Decryptor = new DecryptHelper(sessionKey)
 				};
 			_sessions[hostKey] = s;
+			SetIcon();
 			return s;
 		}
 
@@ -117,6 +115,32 @@ namespace Force.AutoTunnel
 		public bool HasSession(ulong key)
 		{
 			return _sessions.ContainsKey(key);
+		}
+
+		private int _estabilishingCount;
+
+		public void IncrementEstabilishing()
+		{
+			Interlocked.Increment(ref _estabilishingCount);
+			SetIcon();
+		}
+
+		public void DecrementEstabilishing()
+		{
+			Interlocked.Decrement(ref _estabilishingCount);
+			SetIcon();
+		}
+
+		private void SetIcon()
+		{
+			if (_estabilishingCount > 0)
+			{
+				ConsoleHelper.SetActiveIcon(ConsoleHelper.IconStatus.Estabilishing);
+			}
+			else
+			{
+				ConsoleHelper.SetActiveIcon(_sessions.Count > 0 ? ConsoleHelper.IconStatus.Active : ConsoleHelper.IconStatus.Default);
+			}
 		}
 	}
 }

@@ -6,6 +6,7 @@
 		{
 			"tunnelHost": "192.168.16.8",
 			"connectHost": "192.168.18.1:12017",
+			"proxyHost": "127.0.0.1:12018",
 			"key": "key1",
 			"keepAlive": true,
 			"connectOnStart": true
