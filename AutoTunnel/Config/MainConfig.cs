@@ -31,5 +31,9 @@ namespace Force.AutoTunnel.Config
 		[DefaultValue(15)]
 		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 		public int PingBackTime { get; set; }
+
+		[DefaultValue(true)]
+		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+		public bool AutoReloadOnChange { get; set; }
 	}
 }

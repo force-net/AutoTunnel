@@ -69,6 +69,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="ClientSender.cs" />
+    <Compile Include="Config\ConfigHelper.cs" />
     <Compile Include="Config\RemoteClientConfig.cs" />
     <Compile Include="Config\RemoteServerConfig.cs" />
     <Compile Include="Config\MainConfig.cs" />
@@ -102,6 +103,7 @@
     <Compile Include="Service\MainServiceInstallHelper.cs" />
     <Compile Include="Starter.cs" />
     <Compile Include="StateFlags.cs" />
+    <Compile Include="TunnelSession.cs" />
     <Compile Include="TunnelStorage.cs" />
     <Compile Include="WinDivert.cs" />
   </ItemGroup>

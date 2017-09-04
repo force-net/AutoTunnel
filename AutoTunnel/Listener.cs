@@ -70,13 +70,13 @@ namespace Force.AutoTunnel
 					{
 						int cnt = s.ReceiveFrom(inBuf, ref ep1);
 						IPEndPoint ep = (IPEndPoint)ep1;
-						TunnelStorage.Session session;
+						TunnelSession session;
 
 						if (cnt == 0) continue;
 						byte[] decBuf = null;
 						if (cnt % 16 != 0)
 						{
-							if (inBuf[0] == 1)
+							if (inBuf[0] == (byte)StateFlags.Connecting)
 							{
 								LogHelper.Log.WriteLine("Estabilishing connection from " + ep);
 								int dataLen = -1;
@@ -120,13 +120,20 @@ namespace Force.AutoTunnel
 								continue;
 							}
 
-							if (inBuf[0] == 0x5) // ping
+							if (inBuf[0] == (byte)StateFlags.Ping) // ping
 							{
 								session = _storage.GetSession(ep);
-								if (session != null) session.UpdateLastActivity();
+								if (session != null) session.UpdateReceiveActivity();
 								s.SendTo(new byte[] { (byte)StateFlags.Pong, 0, 0, 0 }, 4, SocketFlags.None, ep);
 								continue;
 							}
+								// it is good idea, but attacker can cause close of our connection
+								// so, think in future about this
+							/*else if (inBuf[0] == (byte)StateFlags.ConnectionClosing) // ping
+							{
+								_storage.RemoveSession(ep);
+								continue;
+							}*/
 							else
 							{
 								// error
@@ -155,7 +162,7 @@ namespace Force.AutoTunnel
 
 							decBuf = session.Decryptor.InnerBuf;
 							cnt = len;
-							session.UpdateLastActivity();
+							session.UpdateReceiveActivity();
 						}
 
 						// var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
@@ -169,7 +176,7 @@ namespace Force.AutoTunnel
 							// session was changed for client, killing it and update data
 							if (!sender.Session.RemoteEP.Equals(ep))
 							{
-								Console.WriteLine("Client for " + sourceIp + " has changed endpoint from " + sender.Session.RemoteEP + " to " + ep);
+								LogHelper.Log.WriteLine("Client for " + sourceIp + " has changed endpoint from " + sender.Session.RemoteEP + " to " + ep);
 								s.SendTo(new byte[] { 0x3, 0, 0, 0 }, 4, SocketFlags.None, sender.Session.RemoteEP);
 								_storage.RemoveSession(sender.Session.RemoteEP);
 								sender.Session = session;

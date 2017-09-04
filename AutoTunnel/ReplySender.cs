@@ -12,7 +12,7 @@ namespace Force.AutoTunnel
 
 		private readonly EncryptHelper _encryptHelper;
 
-		public ReplySender(TunnelStorage.Session session, IPAddress watchAddr, Socket socket, TunnelStorage storage)
+		public ReplySender(TunnelSession session, IPAddress watchAddr, Socket socket, TunnelStorage storage)
 			: base(session, watchAddr, storage)
 		{
 			LogHelper.Log.WriteLine("Tunnel watcher was created for " + watchAddr);
@@ -22,6 +22,7 @@ namespace Force.AutoTunnel
 
 		protected override void Send(byte[] packet, int packetLen)
 		{
+			Session.UpdateSendActivity();
 			var len = _encryptHelper.Encrypt(packet, packetLen);
 			_socket.SendTo(_encryptHelper.InnerBuf, len, SocketFlags.None, Session.RemoteEP);
 		}

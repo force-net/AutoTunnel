@@ -20,9 +20,9 @@ namespace Force.AutoTunnel
 
 		protected readonly TunnelStorage Storage;
 
-		public TunnelStorage.Session Session { get; set; }
+		public TunnelSession Session { get; set; }
 
-		protected BaseSender(TunnelStorage.Session session, IPAddress watchAddr, TunnelStorage storage)
+		protected BaseSender(TunnelSession session, IPAddress watchAddr, TunnelStorage storage)
 		{
 			Storage = storage;
 			Session = session;

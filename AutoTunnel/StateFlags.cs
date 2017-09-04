@@ -14,6 +14,9 @@
 
 		ErrorFromProxy = 8,
 
-		Pong = 9
+		Pong = 9,
+
+		// todo : think about it
+		// ConnectionClosing = 10
 	}
 }

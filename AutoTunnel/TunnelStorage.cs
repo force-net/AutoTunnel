@@ -26,7 +26,7 @@ namespace Force.AutoTunnel
 		public IPEndPoint[] GetOldSessions(TimeSpan killTime)
 		{
 			var dt = DateTime.UtcNow;
-			return _sessions.Where(x => !x.Value.IsClientSession && dt.Subtract(x.Value.LastActivity) >= killTime)
+			return _sessions.Where(x => !x.Value.IsClientSession && dt.Subtract(x.Value.LastReceiveActivity) >= killTime)
 				.Select(x => x.Key)
 				.Select(x => new IPEndPoint((long)(x >> 16), (int)(x & 0xffff)))
 				.ToArray();
@@ -43,7 +43,7 @@ namespace Force.AutoTunnel
 		public void RemoveSession(IPEndPoint endPoint)
 		{
 			var hostKey = GetHostKey(endPoint);
-			Session session;
+			TunnelSession session;
 			if (_sessions.TryRemove(hostKey, out session))
 			{
 				if (session.IsClientSession)
@@ -59,36 +59,12 @@ namespace Force.AutoTunnel
 			SetIcon();
 		}
 
-		public class Session
-		{
-			public Session(IPEndPoint remoteEP)
-			{
-				RemoteEP = remoteEP;
-				UpdateLastActivity();
-			}
+		private readonly ConcurrentDictionary<ulong, TunnelSession> _sessions = new ConcurrentDictionary<ulong, TunnelSession>();
 
-			public IPEndPoint RemoteEP { get; private set; }
-
-			public byte[] Key { get; set; }
-
-			public DecryptHelper Decryptor { get; set; }
-
-			public DateTime LastActivity { get; private set; }
-
-			public bool IsClientSession { get; set; }
-
-			public void UpdateLastActivity()
-			{
-				LastActivity = DateTime.UtcNow;
-			}
-		}
-
-		private readonly ConcurrentDictionary<ulong, Session> _sessions = new ConcurrentDictionary<ulong, Session>();
-
-		public Session AddSession(byte[] sessionKey, IPEndPoint remoteEP)
+		public TunnelSession AddSession(byte[] sessionKey, IPEndPoint remoteEP)
 		{
 			var hostKey = GetHostKey(remoteEP);
-			var s = new Session(remoteEP)
+			var s = new TunnelSession(remoteEP)
 				{
 					Key = sessionKey,
 					Decryptor = new DecryptHelper(sessionKey)
@@ -98,9 +74,9 @@ namespace Force.AutoTunnel
 			return s;
 		}
 
-		public Session GetSession(IPEndPoint remoteHost)
+		public TunnelSession GetSession(IPEndPoint remoteHost)
 		{
-			Session value;
+			TunnelSession value;
 			if (_sessions.TryGetValue(GetHostKey(remoteHost), out value)) return value;
 			return null;
 		}

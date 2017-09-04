@@ -16,7 +16,7 @@ namespace Force.AutoTunnel
 		public static void Start()
 		{
 			_storage = new TunnelStorage();
-			var config = Program.Config;
+			var config = ConfigHelper.Config;
 
 			if (config.EnableListening)
 			{
@@ -40,8 +40,8 @@ namespace Force.AutoTunnel
 			_storage.RemoveAllSessions();
 			if (_listener != null)
 				_listener.Dispose();
-			if (Program.Config.AddFirewallRule)
-				FirewallHelper.DeleteFirewallRule(Program.Config.Port.ToString(CultureInfo.InvariantCulture));
+			if (ConfigHelper.Config.AddFirewallRule)
+				FirewallHelper.DeleteFirewallRule(ConfigHelper.Config.Port.ToString(CultureInfo.InvariantCulture));
 		}
 	}
 }

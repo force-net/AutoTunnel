@@ -84,6 +84,16 @@ namespace Force.AutoTunnel
 			Task.Factory.StartNew(InitInternal);
 		}
 
+		private void CloseSocket()
+		{
+			if (_socket != null)
+			{
+				_socket.Dispose();
+			}
+
+			_socket = null;
+		}
+
 		private void InitInternal()
 		{
 			if (Interlocked.CompareExchange(ref _isIniting, 1, 0) == 1)
@@ -126,8 +136,7 @@ namespace Force.AutoTunnel
 				var recLength = 0;
 
 				// killing old socket
-				if (_socket != null)
-					_socket.Dispose();
+				CloseSocket();
 				_socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 				_socket.Connect(destEP);
 
@@ -170,7 +179,7 @@ namespace Force.AutoTunnel
 					LogHelper.Log.WriteLine("No response from server " + destEP);
 					if (DateTime.UtcNow.Subtract(_lastInitRequest).TotalSeconds > 60)
 					{
-						LogHelper.Log.WriteLine("Stopping connect atteptions to " + destEP + " until another request will occure");
+						LogHelper.Log.WriteLine("Stopping connect atteptions to " + destEP + " until another request will occur");
 					}
 				}
 
@@ -205,36 +214,42 @@ namespace Force.AutoTunnel
 			}
 		}
 
+		private void DropInit()
+		{
+			_isInited = false;
+			if (_config.KeepAlive)
+				Init();
+		}
+
 		private void PingCycle()
 		{
-			DateTime lastReceiveLast = DateTime.MinValue;
+			DateTime lastPingDate = DateTime.MinValue;
+			var pingSpan = TimeSpan.FromSeconds(_config.PingInterval);
+
 			while (!_disposed)
 			{
 				if (_isInited)
 				{
 					// problem with server? no answers, dropping connection
-					if (Session.LastActivity == lastReceiveLast)
+					if (Session.SendReceiveDifference > TimeSpan.FromSeconds(_config.PingInterval * 2))
 					{
-						_isInited = false;
-						lastReceiveLast = DateTime.MinValue;
-						if (_config.KeepAlive)
-							Init();
+						DropInit();
 					}
 
-					if (_config.KeepAlive || _lastSend.Subtract(Session.LastActivity).TotalSeconds > _config.PingInterval)
+					if ((_config.KeepAlive && DateTime.UtcNow.Subtract(lastPingDate) > pingSpan) || Session.SendReceiveDifference > pingSpan)
 					{
-						lastReceiveLast = Session.LastActivity;
 						_socket.Send(new byte[] { (byte)StateFlags.Ping, 0, 0, 0 }, 4, SocketFlags.None);
-						_lastSend = DateTime.UtcNow;
+						lastPingDate = DateTime.UtcNow;
 					}
 				}
 				else
 				{
-					// force renew connection attepmt
-					_lastInitRequest = DateTime.UtcNow;
+					// force renew connection attempt
+					if (_config.KeepAlive)
+						_lastInitRequest = DateTime.UtcNow;
 				}
 
-				Thread.Sleep(_config.PingInterval * 1000);
+				Thread.Sleep(1000);
 			}
 		}
 
@@ -251,14 +266,12 @@ namespace Force.AutoTunnel
 			{
 				var lenToSend = _encryptHelper.Encrypt(packet, packetLen);
 				var packetToSend = _encryptHelper.InnerBuf;
-				_lastSend = DateTime.UtcNow;
+				Session.UpdateReceiveActivity();
 				_socket.Send(packetToSend, lenToSend, SocketFlags.None);
 			}
 		}
 
 		private readonly byte[] _receiveBuffer = new byte[65536];
-
-		private DateTime _lastSend;
 
 		private void ReceiveCycle()
 		{
@@ -276,18 +289,14 @@ namespace Force.AutoTunnel
 				{
 					len = _socket.Receive(buf);
 				}
-				catch (Exception ex)
+				catch (Exception/* ex*/)
 				{
 					if (_isIniting == 1 && _isInited)
 					{
 						LogHelper.Log.WriteLine("Receive data error");
 						_isInited = false;
 						// LogHelper.Log.WriteLine(ex);
-						if (_socket != null)
-						{
-							_socket.Dispose();
-							_socket = null;
-						}
+						CloseSocket();
 
 						if (_config.KeepAlive) Init();
 					}
@@ -303,14 +312,12 @@ namespace Force.AutoTunnel
 					if (buf[0] != (byte)StateFlags.Pong)
 					{
 						LogHelper.Log.WriteLine("Received an error flag from " + _socket.RemoteEndPoint);
-						_isInited = false;
-						// failed data
-						Init();
+						DropInit();
 						continue;
 					}
 				}
 
-				Session.UpdateLastActivity();
+				Session.UpdateReceiveActivity();
 
 				var decryptHelper = Session.Decryptor;
 				var decLen = decryptHelper.Decrypt(buf, 0);
@@ -323,7 +330,7 @@ namespace Force.AutoTunnel
 			base.Dispose();
 			_disposed = true;
 			_initingEvent.Set();
-			_socket.Dispose();
+			CloseSocket();
 		}
 	}
 }
