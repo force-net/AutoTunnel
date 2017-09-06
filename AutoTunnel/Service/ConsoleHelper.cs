@@ -12,7 +12,7 @@ namespace Force.AutoTunnel.Service
 		private static extern IntPtr SendMessage(IntPtr hWnd, uint message, int lParam, IntPtr wParam);
 
 		private static IntPtr _iconActiveHandle = IntPtr.Zero;
-		private static IntPtr _iconEstabilishingHandle = IntPtr.Zero;
+		private static IntPtr _iconEstablishingHandle = IntPtr.Zero;
 		private static IntPtr _iconParentHandle = IntPtr.Zero;
 
 		private static void RestoreOriginalIcon()
@@ -26,7 +26,7 @@ namespace Force.AutoTunnel.Service
 		public enum IconStatus
 		{
 			Active,
-			Estabilishing,
+			Establishing,
 			Default
 		}
 
@@ -38,7 +38,7 @@ namespace Force.AutoTunnel.Service
 			{
 // ReSharper disable AssignNullToNotNullAttribute
 				_iconActiveHandle = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_active.png")).GetHicon();
-				_iconEstabilishingHandle = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_estabilishing.png")).GetHicon();
+				_iconEstablishingHandle = new Bitmap(typeof(ConsoleHelper).Assembly.GetManifestResourceStream("Force.AutoTunnel.tunnel_establishing.png")).GetHicon();
 // ReSharper restore AssignNullToNotNullAttribute
 
 				_iconParentHandle = SendMessage(GetConsoleWindow(), 0x80, 0, _iconActiveHandle);
@@ -46,7 +46,7 @@ namespace Force.AutoTunnel.Service
 
 			var icon = _iconParentHandle;
 			if (status == IconStatus.Active) icon = _iconActiveHandle;
-			else if (status == IconStatus.Estabilishing) icon = _iconEstabilishingHandle;
+			else if (status == IconStatus.Establishing) icon = _iconEstablishingHandle;
 			SendMessage(GetConsoleWindow(), 0x80, 0, icon);
 			SendMessage(GetConsoleWindow(), 0x80, 1, icon);
 		}

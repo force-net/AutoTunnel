@@ -138,8 +138,8 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\tunnel_estabilishing.png">
-      <Link>tunnel_estabilishing.png</Link>
+    <EmbeddedResource Include="..\tunnel_establishing.png">
+      <Link>tunnel_establishing.png</Link>
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

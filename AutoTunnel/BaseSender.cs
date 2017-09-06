@@ -55,10 +55,11 @@ namespace Force.AutoTunnel
 			int packetLen = 0;
 			while (!_isExiting)
 			{
+				var oldHandle = _handle;
 				if (!WinDivert.WinDivertRecv(_handle, packet, packet.Length, ref addr, ref packetLen))
 				{
-					// showing error only if handle is not removed
-					if (_handle != IntPtr.Zero)
+					// showing error only if handle is not removed and not changed
+					if (_handle != IntPtr.Zero && oldHandle == _handle)
 					{
 						LogHelper.Log.WriteLine("Cannot receive network data: " + Marshal.GetLastWin32Error());
 						Thread.Sleep(1000);

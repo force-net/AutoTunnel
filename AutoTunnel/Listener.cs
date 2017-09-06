@@ -78,7 +78,7 @@ namespace Force.AutoTunnel
 						{
 							if (inBuf[0] == (byte)StateFlags.Connecting)
 							{
-								LogHelper.Log.WriteLine("Estabilishing connection from " + ep);
+								LogHelper.Log.WriteLine("Establishing connection from " + ep);
 								int dataLen = -1;
 								DecryptHelper decryptHelper = null;
 								EncryptHelper encryptHelper = null;
@@ -116,7 +116,7 @@ namespace Force.AutoTunnel
 
 								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
 								var descr = selectedRemoteClient != null ? (!string.IsNullOrEmpty(selectedRemoteClient.Description) ? " as " + selectedRemoteClient.BinaryKey : string.Empty) : string.Empty;
-								LogHelper.Log.WriteLine("Estabilished connection from " + ep + descr);
+								LogHelper.Log.WriteLine("Established connection from " + ep + descr);
 								continue;
 							}
 
@@ -167,7 +167,7 @@ namespace Force.AutoTunnel
 
 						// var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
 						var sourceIp = new IPAddress(decBuf[12] | (decBuf[13] << 8) | (decBuf[14] << 16) | (decBuf[15] << 24));
-						// if we already has option to estabilish connection to this ip, do not add additional sender
+						// if we already has option to establish connection to this ip, do not add additional sender
 						if (!_storage.OutgoingConnectionAdresses.Contains(sourceIp))
 						{
 							var sender = _storage.GetOrAddSender(sourceIp, () => new ReplySender(session, sourceIp, s, _storage));

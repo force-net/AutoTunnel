@@ -93,25 +93,25 @@ namespace Force.AutoTunnel
 			return _sessions.ContainsKey(key);
 		}
 
-		private int _estabilishingCount;
+		private int _establishingCount;
 
-		public void IncrementEstabilishing()
+		public void IncrementEstablishing()
 		{
-			Interlocked.Increment(ref _estabilishingCount);
+			Interlocked.Increment(ref _establishingCount);
 			SetIcon();
 		}
 
-		public void DecrementEstabilishing()
+		public void DecrementEstablishing()
 		{
-			Interlocked.Decrement(ref _estabilishingCount);
+			Interlocked.Decrement(ref _establishingCount);
 			SetIcon();
 		}
 
 		private void SetIcon()
 		{
-			if (_estabilishingCount > 0)
+			if (_establishingCount > 0)
 			{
-				ConsoleHelper.SetActiveIcon(ConsoleHelper.IconStatus.Estabilishing);
+				ConsoleHelper.SetActiveIcon(ConsoleHelper.IconStatus.Establishing);
 			}
 			else
 			{

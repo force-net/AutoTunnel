@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -119,7 +120,7 @@ namespace Force.AutoTunnel
 
 				_connectEP = destEP;
 
-				Storage.IncrementEstabilishing();
+				Storage.IncrementEstablishing();
 				Storage.AddSession(new byte[16], destEP).IsClientSession = true;
 
 				if (proxyEP != null)
@@ -177,7 +178,7 @@ namespace Force.AutoTunnel
 					period = Math.Min(period + 2000, 1000 * 60);
 
 					LogHelper.Log.WriteLine("No response from server " + destEP);
-					if (DateTime.UtcNow.Subtract(_lastInitRequest).TotalSeconds > 60)
+					if (!_config.ConnectOnStart && DateTime.UtcNow.Subtract(_lastInitRequest).TotalSeconds > 60)
 					{
 						LogHelper.Log.WriteLine("Stopping connect atteptions to " + destEP + " until another request will occur");
 					}
@@ -185,7 +186,7 @@ namespace Force.AutoTunnel
 
 				if (recLength < 4 || _receiveBuffer[0] != (byte)StateFlags.ConnectAnswer)
 				{
-					Console.Error.WriteLine("Invalid server response");
+					LogHelper.Log.WriteLine("Invalid server response");
 					Storage.RemoveSession(destEP);
 					return;
 				}
@@ -193,7 +194,7 @@ namespace Force.AutoTunnel
 				var decLen = decryptHelper.Decrypt(_receiveBuffer, 4);
 				if (decLen < 9)
 				{
-					Console.Error.WriteLine("Invalid server response");
+					LogHelper.Log.WriteLine("Invalid server response");
 					Storage.RemoveSession(destEP);
 					return;
 				}
@@ -206,11 +207,14 @@ namespace Force.AutoTunnel
 				LogHelper.Log.WriteLine("Initialized connection to " + destEP);
 				_isInited = true;
 				_initingEvent.Set();
+
+				// after connect - sending packet to estabilish backward connection
+				using (var p = new Ping()) p.Send(DstAddr, 1);
 			}
 			finally
 			{
 				Interlocked.Exchange(ref _isIniting, 0);
-				Storage.DecrementEstabilishing();
+				Storage.DecrementEstablishing();
 			}
 		}
 
