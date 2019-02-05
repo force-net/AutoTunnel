@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 
 namespace Force.AutoTunnel
 {
@@ -25,6 +26,17 @@ namespace Force.AutoTunnel
 		public void Write(byte[] packet, int packetLen)
 		{
 			int writeLen = 0;
+			/*if (packet[9] == 6 && (packet[20 + 13] & 2) != 0 && packet[20 + 20] == 2 && packetLen > 20 + 24)
+			{
+				var len = packet[20 + 22] << 8 | packet[20 + 23];
+				Console.WriteLine("X: " + (packet[20 + 22] << 8 | packet[20 + 23]));
+				// UDP + encryption
+				len -= 28 + 32;
+				packet[20 + 22] = (byte)(len >> 8);
+				packet[20 + 23] = (byte)(len & 0xFF);
+				WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref _addr, 0);
+			}*/
+
 			WinDivert.WinDivertSend(_handle, packet, packetLen, ref _addr, ref writeLen);
 		}
 

@@ -85,6 +85,26 @@ namespace Force.AutoTunnel
 						continue;
 					}
 				}
+
+				// tcp SYN
+				/*if (packet[9] == 6)
+				{
+					Console.WriteLine(packet[20 + 13].ToString("X2"));
+				}*/
+
+				// tcp + syn + MSS + valid length
+				if (packet[9] == 6 && (packet[20 + 13] & 2) != 0 && packet[20 + 20] == 2 && packetLen > 20 + 24)
+				{
+					var len = packet[20 + 22] << 8 | packet[20 + 23];
+					Console.WriteLine(packet[20 + 22] << 8 | packet[20 + 23]);
+					// UDP + encryption
+					len -= 28 + 32;
+					// len = 1200;
+					packet[20 + 22] = (byte)(len >> 8);
+					packet[20 + 23] = (byte)(len & 0xFF);
+					WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref addr, 0);
+				}
+
 				// Console.WriteLine("> " + packetLen + " " + addr.IfIdx + " " + addr.SubIfIdx + " " + addr.Direction);
 				try
 				{

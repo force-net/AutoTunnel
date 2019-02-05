@@ -16,6 +16,8 @@ namespace Force.AutoTunnel.Config
 
 		public RemoteClientConfig[] RemoteClients { get; set; }
 
+		public string ListenAddress { get; set; }
+
 		[DefaultValue(12017)]
 		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 		public int Port { get; set; }

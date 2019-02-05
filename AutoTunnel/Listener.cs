@@ -33,7 +33,9 @@ namespace Force.AutoTunnel
 
 		public void Start()
 		{
-			LogHelper.Log.WriteLine("Started listening for incoming connections on " + _config.Port);
+			LogHelper.Log.WriteLine("Started listening for incoming connections on "
+				+ (string.IsNullOrEmpty(_config.ListenAddress) ? string.Empty : (_config.ListenAddress + ":"))
+				+ _config.Port);
 			Task.Factory.StartNew(StartInternal);
 			Task.Factory.StartNew(CleanupThread);
 		}
@@ -61,7 +63,17 @@ namespace Force.AutoTunnel
 			_socket = s;
 			try
 			{
-				s.Bind(new IPEndPoint(IPAddress.Any, _config.Port));
+				var addr = IPAddress.Any;
+				if (!string.IsNullOrEmpty(_config.ListenAddress))
+				{
+					if (!IPAddress.TryParse(_config.ListenAddress, out addr))
+					{
+						Console.Error.WriteLine("Invalid IP Address in config: " + _config.ListenAddress);
+						Environment.Exit(1);
+					}
+				}
+
+				s.Bind(new IPEndPoint(addr, _config.Port));
 				byte[] inBuf = new byte[65536];
 				EndPoint ep1 = new IPEndPoint(IPAddress.Any, 0);
 				while (!_disposed)

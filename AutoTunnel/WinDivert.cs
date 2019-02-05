@@ -79,5 +79,8 @@ namespace Force.AutoTunnel
 
 		[DllImport("WinDivert.dll")]
 		public static extern bool WinDivertSend(IntPtr handle, byte[] packet, int packetLen, ref WinDivertAddress addr, ref int writeLen);
+
+		[DllImport("WinDivert.dll")]
+		public static extern bool WinDivertHelperCalcChecksums(byte[] packet, int packetLen, ref WinDivertAddress addr, ulong flags);
 	}
 }
