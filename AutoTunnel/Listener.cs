@@ -118,7 +118,9 @@ namespace Force.AutoTunnel
 								
 								var serverHandshake = new ServerHandshake();
 								var outPacket = serverHandshake.GetOutPacket(decryptHelper.InnerBuf, dataLen);
-								_storage.AddSession(serverHandshake.SessionKey, ep);
+								var newSession = _storage.AddSession(serverHandshake.SessionKey, ep);
+								if (selectedRemoteClient != null)
+									newSession.ClampMss = selectedRemoteClient.ClampMss;
 								
 								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
 								var initBuf = new byte[outLen + 4];

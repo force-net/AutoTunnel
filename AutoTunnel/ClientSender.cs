@@ -34,7 +34,7 @@ namespace Force.AutoTunnel
 		private IPEndPoint _connectEP;
 
 		public ClientSender(RemoteServerConfig config, TunnelStorage storage)
-			: base(null, EndpointHelper.ParseEndPoint(config.TunnelHost, 1).Address, storage)
+			: base(null, EndpointHelper.ParseEndPoint(config.TunnelHost, 1).Address, storage, config.ClampMss)
 		{
 			storage.OutgoingConnectionAdresses.Add(DstAddr);
 			_config = config;

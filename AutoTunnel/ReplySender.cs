@@ -13,7 +13,7 @@ namespace Force.AutoTunnel
 		private readonly EncryptHelper _encryptHelper;
 
 		public ReplySender(TunnelSession session, IPAddress watchAddr, Socket socket, TunnelStorage storage)
-			: base(session, watchAddr, storage)
+			: base(session, watchAddr, storage, session.ClampMss)
 		{
 			LogHelper.Log.WriteLine("Tunnel watcher was created for " + watchAddr);
 			_socket = socket;

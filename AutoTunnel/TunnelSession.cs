@@ -43,5 +43,8 @@ namespace Force.AutoTunnel
 				return LastSendActivity.Subtract(LastReceiveActivity);
 			}
 		}
+
+		public int? ClampMss { get; set; }
+		
 	}
 }

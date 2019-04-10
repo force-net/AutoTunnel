@@ -18,6 +18,8 @@ namespace Force.AutoTunnel.Config
 
 		public bool ConnectOnStart { get; set; }
 
+		public int? ClampMss { get; set; }
+
 		[DefaultValue(15)]
 		[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 		public int PingInterval { get; set; }

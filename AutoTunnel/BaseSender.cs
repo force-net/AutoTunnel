@@ -22,10 +22,13 @@ namespace Force.AutoTunnel
 
 		public TunnelSession Session { get; set; }
 
-		protected BaseSender(TunnelSession session, IPAddress watchAddr, TunnelStorage storage)
+		protected int? ClampMss;
+
+		protected BaseSender(TunnelSession session, IPAddress watchAddr, TunnelStorage storage, int? clampMss)
 		{
 			Storage = storage;
 			Session = session;
+			ClampMss = clampMss;
 
 			ReInitDivert(watchAddr);
 			Task.Factory.StartNew(StartInternal);
@@ -39,6 +42,11 @@ namespace Force.AutoTunnel
 
 			//  or (udp and udp.DstPort != 12017)
 			_handle = WinDivert.WinDivertOpen("outbound and ip and (ip.DstAddr == " + newDstAddr + ")", WinDivert.LAYER_NETWORK, 0, 0);
+			if (_handle == new IntPtr(-1))
+			{
+				LogHelper.Log.WriteLine("Cannot open divert driver: " + Marshal.GetLastWin32Error());
+				Environment.Exit(1);
+			}
 		}
 
 		protected abstract void Send(byte[] packet, int packetLen);
@@ -93,16 +101,20 @@ namespace Force.AutoTunnel
 				}*/
 
 				// tcp + syn + MSS + valid length
-				if (packet[9] == 6 && (packet[20 + 13] & 2) != 0 && packet[20 + 20] == 2 && packetLen > 20 + 24)
+				if (ClampMss.HasValue)
 				{
-					var len = packet[20 + 22] << 8 | packet[20 + 23];
-					Console.WriteLine(packet[20 + 22] << 8 | packet[20 + 23]);
-					// UDP + encryption
-					len -= 28 + 32;
-					// len = 1200;
-					packet[20 + 22] = (byte)(len >> 8);
-					packet[20 + 23] = (byte)(len & 0xFF);
-					WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref addr, 0);
+					if (packet[9] == 6 && (packet[20 + 13] & 2) != 0 && packet[20 + 20] == 2 && packetLen > 20 + 24)
+					{
+						var len = packet[20 + 22] << 8 | packet[20 + 23];
+						Console.WriteLine(packet[20 + 22] << 8 | packet[20 + 23]);
+						// UDP + encryption
+						if (ClampMss.Value == 0) len -= 28 + 32;
+						else len = ClampMss.Value - 28 + 32;
+						// len = 1200;
+						packet[20 + 22] = (byte)(len >> 8);
+						packet[20 + 23] = (byte)(len & 0xFF);
+						WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref addr, 0);
+					}
 				}
 
 				// Console.WriteLine("> " + packetLen + " " + addr.IfIdx + " " + addr.SubIfIdx + " " + addr.Direction);

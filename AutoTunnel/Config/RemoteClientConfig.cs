@@ -10,5 +10,7 @@ namespace Force.AutoTunnel.Config
 		public byte[] BinaryKey { get; set; }
 
 		public string Description { get; set; }
+
+		public int? ClampMss { get; set; }
 	}
 }
