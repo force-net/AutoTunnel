@@ -16,9 +16,54 @@ namespace Force.AutoTunnel
 		[StructLayout(LayoutKind.Sequential)]
 		public struct WinDivertAddress
 		{
+			public ulong Timestamp;
 			public uint IfIdx;                       /* Packet's interface index. */
 			public uint SubIfIdx;                    /* Packet's sub-interface index. */
-			public byte Direction;                   /* Packet's direction. */
+			public uint Flags;
+			/*public byte Direction;                   /* Packet's direction. #1#
+			public byte Loopback;
+			public byte Impostor;
+			public byte PseudoIPChecksum;
+			public byte PseudoTCPChecksum;
+			public byte PseudoUDPChecksum;
+			public byte Reserved;*/
+
+			public uint Direction
+			{
+				get
+				{
+					return Flags & 1;
+				}
+			}
+
+			public uint Loopback
+			{
+				get
+				{
+					return Flags & 2;
+				}
+			}
+
+			public uint Impostor
+			{
+				get
+				{
+					return Flags & 4;
+				}
+			}
+
+			public bool HasPseudoChecksum
+			{
+				get
+				{
+					return (Flags & (8 | 16 | 32)) != 0;
+				}
+			}
+
+			public void DisablePseudoChecksums()
+			{
+				Flags &= 255 - (8 + 16 + 32);
+			}
 		}
 
 		[StructLayout(LayoutKind.Explicit)]

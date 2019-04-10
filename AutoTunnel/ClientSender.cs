@@ -99,14 +99,16 @@ namespace Force.AutoTunnel
 		{
 			if (Interlocked.CompareExchange(ref _isIniting, 1, 0) == 1)
 				return;
+			DecryptHelper decryptHelper = null;
+			EncryptHelper encryptHelper = null;
 			try
 			{
 				_initingEvent.Reset();
 
 				var cs = new ClientHandshake();
 				var sendingPacketLen = cs.GetPacketForSending();
-				_encryptHelper = new EncryptHelper(_serverKey);
-				var decryptHelper = new DecryptHelper(_serverKey);
+				encryptHelper = new EncryptHelper(_serverKey);
+				decryptHelper = new DecryptHelper(_serverKey);
 
 				var proxyEP = !string.IsNullOrEmpty(_config.ProxyHost) ? EndpointHelper.ParseEndPoint(_config.ProxyHost, 12018) : null;
 				var connectEP = proxyEP == null ? EndpointHelper.ParseEndPoint(_config.ConnectHost, 12017) : null;
@@ -128,10 +130,9 @@ namespace Force.AutoTunnel
 				else
 					LogHelper.Log.WriteLine("Initializing connection to " + connectEP);
 
-				var lenToSend = _encryptHelper.Encrypt(cs.SendingPacket, sendingPacketLen);
-				var packetToSend = _encryptHelper.InnerBuf;
-				var initBuf = new byte[lenToSend + 4];
-				Buffer.BlockCopy(packetToSend, 0, initBuf, 4, lenToSend);
+				var packetToSend = encryptHelper.Encrypt(cs.SendingPacket, sendingPacketLen);
+				var initBuf = new byte[packetToSend.Count + 4];
+				Buffer.BlockCopy(packetToSend.Array, 0, initBuf, 4, packetToSend.Count);
 				initBuf[0] = (byte)StateFlags.Connecting;
 				initBuf[1] = 1; // version
 				var recLength = 0;
@@ -200,6 +201,9 @@ namespace Force.AutoTunnel
 				}
 
 				var sessionKey = cs.GetPacketFromServer(decryptHelper.InnerBuf, decLen);
+				// previous encrypt helper
+				if (_encryptHelper != null)
+					_encryptHelper.Dispose();
 				_encryptHelper = new EncryptHelper(sessionKey);
 				var session = Storage.GetSession(destEP);
 				session.Decryptor = new DecryptHelper(sessionKey);
@@ -215,12 +219,15 @@ namespace Force.AutoTunnel
 			{
 				Interlocked.Exchange(ref _isIniting, 0);
 				Storage.DecrementEstablishing();
+				if (decryptHelper != null) decryptHelper.Dispose();
+				if (encryptHelper != null) encryptHelper.Dispose();
 			}
 		}
 
 		private void DropInit()
 		{
 			_isInited = false;
+			_initingEvent.Reset();
 			if (_config.KeepAlive)
 				Init();
 		}
@@ -268,10 +275,9 @@ namespace Force.AutoTunnel
 
 			if (_isInited)
 			{
-				var lenToSend = _encryptHelper.Encrypt(packet, packetLen);
-				var packetToSend = _encryptHelper.InnerBuf;
+				var packetToSend = _encryptHelper.Encrypt(packet, packetLen);
 				Session.UpdateReceiveActivity();
-				_socket.Send(packetToSend, lenToSend, SocketFlags.None);
+				_socket.Send(packetToSend.Array, packetToSend.Count, SocketFlags.None);
 			}
 		}
 

@@ -14,23 +14,29 @@ namespace Force.AutoTunnel
 
 		public static Tuple<string, string> CreateRsa()
 		{
-			var rsa = RSA.Create();
-			rsa.KeySize = 2048;
-			return new Tuple<string, string>(rsa.ToXmlString(false), rsa.ToXmlString(true));
+			using (var rsa = RSA.Create())
+			{
+				rsa.KeySize = 2048;
+				return new Tuple<string, string>(rsa.ToXmlString(false), rsa.ToXmlString(true));
+			}
 		}
 
 		public static byte[] Encrypt(string publicRsaKey, byte[] data)
 		{
-			var rsa = new RSACryptoServiceProvider();
-			rsa.FromXmlString(publicRsaKey);
-			return rsa.Encrypt(data, false);
+			using (var rsa = new RSACryptoServiceProvider())
+			{
+				rsa.FromXmlString(publicRsaKey);
+				return rsa.Encrypt(data, false);
+			}
 		}
 
 		public static byte[] Decrypt(string privateRsaKey, byte[] data)
 		{
-			var rsa = new RSACryptoServiceProvider();
-			rsa.FromXmlString(privateRsaKey);
-			return rsa.Decrypt(data, false);
+			using (var rsa = new RSACryptoServiceProvider())
+			{
+				rsa.FromXmlString(privateRsaKey);
+				return rsa.Decrypt(data, false);
+			}
 		}
 	}
 }

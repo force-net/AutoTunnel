@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Net.Sockets;
 
 using Force.AutoTunnel.Encryption;
@@ -23,8 +24,15 @@ namespace Force.AutoTunnel
 		protected override void Send(byte[] packet, int packetLen)
 		{
 			Session.UpdateSendActivity();
-			var len = _encryptHelper.Encrypt(packet, packetLen);
-			_socket.SendTo(_encryptHelper.InnerBuf, len, SocketFlags.None, Session.RemoteEP);
+			var p = _encryptHelper.Encrypt(packet, packetLen);
+			_socket.SendTo(p.Array, p.Count, SocketFlags.None, Session.RemoteEP);
+		}
+
+		public override void Dispose()
+		{
+			base.Dispose();
+			if (_encryptHelper != null)
+				_encryptHelper.Dispose();
 		}
 	}
 }

@@ -1,8 +1,9 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Security.Cryptography;
 
 namespace Force.AutoTunnel.Encryption
 {
-	public class EncryptHelper
+	public class EncryptHelper : IDisposable
 	{
 		private readonly RandomNumberGenerator _random = RandomNumberGenerator.Create();
 
@@ -12,25 +13,21 @@ namespace Force.AutoTunnel.Encryption
 
 		private readonly ICryptoTransform _encryptor;
 
-		public byte[] InnerBuf
-		{
-			get
-			{
-				return _innerBuf;
-			}
-		}
+		private readonly Aes _aes;
 
 		public EncryptHelper(byte[] key)
 		{
-			var aes = Aes.Create();
+			Aes aes;
+			aes = Aes.Create();
 			aes.Key = key;
 			aes.IV = new byte[16];
 			aes.Mode = CipherMode.CBC;
 			aes.Padding = PaddingMode.None;
+			_aes = aes;
 			_encryptor = aes.CreateEncryptor();
 		}
 
-		public int Encrypt(byte[] data, int len)
+		public ArraySegment<byte> Encrypt(byte[] data, int len)
 		{
 			var hb = _headerBuf;
 			_random.GetBytes(hb);
@@ -45,11 +42,18 @@ namespace Force.AutoTunnel.Encryption
 
 			_encryptor.TransformBlock(hb, 0, 16, _innerBuf, 0);
 			var tl = 0;
-			if (len > 0) 
+			if (len > 0)
 				tl = _encryptor.TransformBlock(data, 0, (len + 15) & ~15, _innerBuf, 16);
 
 			_encryptor.TransformFinalBlock(new byte[0], 0, 0);
-			return tl + 16;
+			return new ArraySegment<byte>(_innerBuf, 0, tl + 16);
+		}
+
+		public void Dispose()
+		{
+			// _encryptor.Dispose();
+			_aes.Dispose();
+			_random.Dispose();
 		}
 	}
 }

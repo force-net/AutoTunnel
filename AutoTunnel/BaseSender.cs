@@ -22,7 +22,7 @@ namespace Force.AutoTunnel
 
 		public TunnelSession Session { get; set; }
 
-		protected int? ClampMss;
+		protected readonly int? ClampMss;
 
 		protected BaseSender(TunnelSession session, IPAddress watchAddr, TunnelStorage storage, int? clampMss)
 		{
@@ -113,8 +113,16 @@ namespace Force.AutoTunnel
 						// len = 1200;
 						packet[20 + 22] = (byte)(len >> 8);
 						packet[20 + 23] = (byte)(len & 0xFF);
+						addr.DisablePseudoChecksums();
 						WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref addr, 0);
 					}
+				}
+
+				// if checksums are offloaded we need to recalculate it manually before send
+				if (addr.HasPseudoChecksum)
+				{
+					addr.DisablePseudoChecksums();
+					WinDivert.WinDivertHelperCalcChecksums(packet, packetLen, ref addr, 0);
 				}
 
 				// Console.WriteLine("> " + packetLen + " " + addr.IfIdx + " " + addr.SubIfIdx + " " + addr.Direction);

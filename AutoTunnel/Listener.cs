@@ -122,15 +122,17 @@ namespace Force.AutoTunnel
 								if (selectedRemoteClient != null)
 									newSession.ClampMss = selectedRemoteClient.ClampMss;
 								
-								var outLen = encryptHelper.Encrypt(outPacket, outPacket.Length);
-								var initBuf = new byte[outLen + 4];
-								Buffer.BlockCopy(encryptHelper.InnerBuf, 0, initBuf, 4, outLen);
+								var outEncryptesPacket = encryptHelper.Encrypt(outPacket, outPacket.Length);
+								var initBuf = new byte[outEncryptesPacket.Count + 4];
+								Buffer.BlockCopy(outEncryptesPacket.Array, 0, initBuf, 4, outEncryptesPacket.Count);
 								initBuf[0] = (byte)StateFlags.ConnectAnswer;
 								initBuf[1] = 1; // version
 
 								s.SendTo(initBuf, initBuf.Length, SocketFlags.None, ep);
 								var descr = selectedRemoteClient != null ? (!string.IsNullOrEmpty(selectedRemoteClient.Description) ? " as " + selectedRemoteClient.BinaryKey : string.Empty) : string.Empty;
 								LogHelper.Log.WriteLine("Established connection from " + ep + descr);
+								encryptHelper.Dispose();
+								decryptHelper.Dispose();
 								continue;
 							}
 
