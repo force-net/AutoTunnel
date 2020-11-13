@@ -166,7 +166,7 @@ namespace Force.AutoTunnel
 						}
 
 						// var sourceIp = decBuf[12] + "." + decBuf[13] + "." + decBuf[14] + "." + decBuf[15];
-						var sourceIp = new IPAddress(decBuf[12] | (decBuf[13] << 8) | (decBuf[14] << 16) | (decBuf[15] << 24));
+						var sourceIp = new IPAddress(decBuf[12] | (decBuf[13] << 8) | (decBuf[14] << 16) | (((uint)decBuf[15]) << 24));
 						// if we already has option to establish connection to this ip, do not add additional sender
 						if (!_storage.OutgoingConnectionAdresses.Contains(sourceIp))
 						{
